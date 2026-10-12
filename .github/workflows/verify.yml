@@ -1,0 +1,35 @@
+name: Verify MuscleMemory
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: memory_test
+          POSTGRES_USER: memory
+          POSTGRES_PASSWORD: test-only-password
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U memory -d memory_test" --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', cache: npm}
+      - run: npm ci && npm run build --workspace @thewariend/musclememory
+      - run: pip install -r requirements.lock && pip install --no-deps --no-build-isolation -e .
+      - run: pytest -q
+        env:
+          MM_TEST_POSTGRES_URL: postgresql+psycopg://memory:test-only-password@127.0.0.1:5432/memory_test
+      - run: ruff check packages tests scripts examples benchmarks && ruff format --check packages tests scripts examples benchmarks
+      - run: python scripts/generate_contracts.py && git diff --exit-code docs/openapi.json packages/sdk-typescript/src/contracts.ts
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: '24', cache: npm}
+      - run: npm ci && npm run build && npm run test:sdk
+

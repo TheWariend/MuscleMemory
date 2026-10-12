@@ -1,0 +1,63 @@
+name: musclememory
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: infrastructure/docker/Dockerfile
+  environment: &environment
+    MM_DEPLOYMENT_MODE: ${MM_DEPLOYMENT_MODE:-local}
+    MM_PUBLIC_URL: ${MM_PUBLIC_URL:-}
+    MM_EMBEDDING_PROVIDER: ${MM_EMBEDDING_PROVIDER:-fastembed}
+    MM_EMBEDDING_MODEL: ${MM_EMBEDDING_MODEL:-sentence-transformers/all-MiniLM-L6-v2}
+    MM_EMBEDDING_DIM: ${MM_EMBEDDING_DIM:-384}
+    MM_EMBEDDING_CACHE_DIR: /models
+    MM_GUIDANCE_TOKEN_BUDGET: ${MM_GUIDANCE_TOKEN_BUDGET:-350}
+    MM_DATABASE_URL: postgresql+psycopg://memory:${MM_DB_PASSWORD:?Set MM_DB_PASSWORD in .env}@postgres:5432/musclememory
+    MM_MIN_SUCCESSES: ${MM_MIN_SUCCESSES:-2}
+    MM_MIN_RELIABILITY: ${MM_MIN_RELIABILITY:-0.65}
+    MM_STALE_DAYS: ${MM_STALE_DAYS:-90}
+    MM_TRACE_RETENTION_DAYS: ${MM_TRACE_RETENTION_DAYS:-30}
+    MM_REQUESTS_PER_MINUTE: ${MM_REQUESTS_PER_MINUTE:-120}
+    MM_ALLOWED_HOSTS: ${MM_ALLOWED_HOSTS:-127.0.0.1:*,localhost:*}
+    MM_ALLOWED_ORIGINS: ${MM_ALLOWED_ORIGINS:-http://127.0.0.1:*,http://localhost:*}
+  read_only: true
+  volumes: [embedding-models:/models]
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    environment:
+      POSTGRES_DB: musclememory
+      POSTGRES_USER: memory
+      POSTGRES_PASSWORD: ${MM_DB_PASSWORD:?Set MM_DB_PASSWORD in .env}
+    volumes: [memory-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U memory -d musclememory"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  migrate:
+    <<: *backend
+    command: [musclememory, migrate]
+    depends_on:
+      postgres: {condition: service_healthy}
+  api:
+    <<: *backend
+    ports: ["127.0.0.1:${MM_HTTP_PORT:-8080}:8080"]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+volumes:
+  memory-data:
+  embedding-models:
+

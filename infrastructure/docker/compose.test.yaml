@@ -1,0 +1,5 @@
+# Use only for a disposable verification stack, never production.
+services:
+  postgres:
+    ports: ["127.0.0.1:55439:5432"]
+
