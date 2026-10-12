@@ -1,0 +1,954 @@
+{
+  "musclememory": {
+    "exports": {
+      "procedure_token": "b0fc0d4f-282a-4258-b692-f98c5c603f3e",
+      "procedure_version": 1,
+      "visibility_scope": "eval-luna-03",
+      "lifecycle_status": "active",
+      "definition": {
+        "schema_version": "1",
+        "title": "Fix the financial CSV export. Duplicate webhook deliveries are double-counted, refunds increase the net balance, and half-cent amounts round incorrectly. Preserve the CSV contract and CLI. Find and fi",
+        "intent_signature": "fix the financial csv export duplicate webhook deliveries are double counted refunds increase the net balance and half cent amounts round incorrectly preserve the csv contract and cli find and fix all three defects",
+        "parameters": {},
+        "preconditions": [],
+        "required_capabilities": [
+          "filesystem.patch",
+          "shell.execute"
+        ],
+        "required_permissions": [],
+        "environment_requirements": {},
+        "steps": [
+          {
+            "step_token": "e1",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "pwd && rg --files"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e2",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/exports.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e3",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/money.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e4",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,260p' tests/test_contracts.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e5",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/cli.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e6",
+            "capability": "filesystem.patch",
+            "source_tool": "apply_patch",
+            "arguments": {
+              "command": "*** Begin Patch\n*** Update File: parcelkit/exports.py\n@@\n def summarize(rows):\n     seen, totals = set(), {}\n     for row in rows:\n         identity = (row[\"account\"], row[\"id\"])\n+        if identity in seen:\n+            continue\n+        seen.add(identity)\n         amount = cents(row[\"amount\"])\n         if row[\"kind\"] == \"refund\":\n-            amount = abs(amount)\n+            amount = -abs(amount)\n         totals[row[\"account\"]] = totals.get(row[\"account\"], 0) + amount\n     return totals\n*** Update File: parcelkit/money.py\n@@\n from decimal import Decimal, ROUND_HALF_UP\n \n def cents(value):\n-    return int(float(value) * 100)\n+    return int((Decimal(str(value)) * 100).quantize(Decimal(\"1\"), rounding=ROUND_HALF_UP))\n*** End Patch\n"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e9",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "python3 -m unittest discover -s tests"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          }
+        ],
+        "expected_outcomes": [
+          "Archived CLI receipts and behavior checks passed."
+        ],
+        "provenance": {
+          "source_run": "5ed2e25a-9dd5-4240-ba16-ca6626369e37",
+          "completion_evidence": {
+            "succeeded": true,
+            "evidence_event_ids": [
+              "e9"
+            ],
+            "verifier": "tool_assertion",
+            "summary": "Archived CLI receipts and behavior checks passed."
+          },
+          "compiler": "deterministic-v1",
+          "removed_events": 5,
+          "contrast_ids": []
+        },
+        "step_graph": {
+          "nodes": [
+            "e1",
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e6",
+            "e9"
+          ],
+          "edges": []
+        },
+        "capability_signature": [
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "filesystem.patch",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute"
+        ],
+        "applicability_conditions": [
+          "capability:filesystem.patch",
+          "capability:shell.execute"
+        ],
+        "risk_cues": [
+          "shell.execute has destructive effects; native approval applies.",
+          "filesystem.patch has write effects; native approval applies.",
+          "Earlier attempt failed: shell.execute (Bash)."
+        ],
+        "avoidance_rules": [
+          "Avoid repeating shell.execute without checking its argument shape."
+        ],
+        "recovery_notes": [],
+        "experience": {
+          "reads": [
+            "parcelkit/cli.py",
+            "parcelkit/exports.py",
+            "parcelkit/money.py",
+            "tests/test_contracts.py"
+          ],
+          "writes": [
+            "parcelkit/exports.py",
+            "parcelkit/money.py"
+          ],
+          "commands": [
+            "'***' Begin Patch '***' Update File: parcelkit/exports.py @@ def 'summarize(rows):' seen, totals = 'set(),' '{}' for row in rows: identity = '(row[account],' 'row[id])' + if identity in seen: + continue + 'seen.add(identity)' amount = 'cents(row[amount])' if 'row[kind]' == refund: - amount = 'abs(amount)' + amount = '-abs(amount)' 'totals[row[account]]' = 'totals.get(row[account],' '0)' + amount return totals '***' Update File: parcelkit/money.py @@ from decimal import Decimal, ROUND_HALF_UP def 'cents(value):' - return 'int(float(value)' '*' '100)' + return 'int((Decimal(str(value))' '*' '100).quantize(Decimal(1),' 'rounding=ROUND_HALF_UP))' '***' End Patch",
+            "pwd '&&' rg --files",
+            "python3 -m unittest discover -s tests",
+            "sed -n 1,240p parcelkit/cli.py",
+            "sed -n 1,240p parcelkit/exports.py",
+            "sed -n 1,240p parcelkit/money.py",
+            "sed -n 1,260p tests/test_contracts.py"
+          ],
+          "verification_commands": [
+            "python3 -m unittest discover -s tests"
+          ],
+          "actions": [
+            {
+              "step_token": "e2",
+              "reads": [
+                "parcelkit/exports.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e3",
+              "reads": [
+                "parcelkit/money.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e4",
+              "reads": [
+                "tests/test_contracts.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e5",
+              "reads": [
+                "parcelkit/cli.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e6",
+              "reads": [],
+              "writes": [
+                "parcelkit/exports.py",
+                "parcelkit/money.py"
+              ]
+            }
+          ],
+          "inputs": [
+            "parcelkit/cli.py",
+            "parcelkit/exports.py",
+            "parcelkit/money.py",
+            "tests/test_contracts.py"
+          ],
+          "edits": [
+            {
+              "file": "parcelkit/exports.py",
+              "before": "            amount = abs(amount)",
+              "after": "        if identity in seen:\n            continue\n        seen.add(identity)\n            amount = -abs(amount)"
+            },
+            {
+              "file": "parcelkit/money.py",
+              "before": "    return int(float(value) * 100)",
+              "after": "    return int((Decimal(str(value)) * 100).quantize(Decimal(\"1\"), rounding=ROUND_HALF_UP))"
+            }
+          ]
+        },
+        "guidance_notice": "Untrusted procedural guidance. Validate inputs and tool outputs. Your system permissions and approval requirements always apply."
+      },
+      "created_at": "2026-10-12T20:44:35.843370Z",
+      "updated_at": "2026-10-12T20:44:36.400400Z",
+      "version_history": [
+        {
+          "version": 1,
+          "status": "validated",
+          "successes": 2,
+          "failures": 0
+        }
+      ],
+      "validation_history": [
+        {
+          "run_token": "c25ef4a3-b54f-40ce-ac51-c780cbeef56b",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e10"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 12,
+              "duration_ms": 8832.489490509033,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        },
+        {
+          "run_token": "0f78dd97-23c9-4c31-84fe-862b359b83ea",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e9"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 13,
+              "duration_ms": 9663.159132003784,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        }
+      ],
+      "contrasts": [],
+      "successes": 2,
+      "failures": 0,
+      "confidence": 0.75,
+      "stale": false,
+      "contract_version": "1"
+    },
+    "configuration": {
+      "procedure_token": "9e109a76-3fd1-42c0-bcbb-af3c059e799a",
+      "procedure_version": 1,
+      "visibility_scope": "eval-luna-03",
+      "lifecycle_status": "active",
+      "definition": {
+        "schema_version": "1",
+        "title": "Fix configuration loading. CLI values should beat environment variables and the file; explicit false and zero overrides must survive; a nested service override must preserve sibling defaults. Repair a",
+        "intent_signature": "fix configuration loading cli values should beat environment variables and the file explicit false and zero overrides must survive a nested service override must preserve sibling defaults repair all three problems without changing the cli",
+        "parameters": {},
+        "preconditions": [],
+        "required_capabilities": [
+          "filesystem.patch",
+          "shell.execute"
+        ],
+        "required_permissions": [],
+        "environment_requirements": {},
+        "steps": [
+          {
+            "step_token": "e1",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "pwd && rg --files"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e2",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/configuration.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e3",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,260p' parcelkit/settings.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e4",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,260p' parcelkit/cli.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e5",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,260p' tests/test_contracts.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e9",
+            "capability": "filesystem.patch",
+            "source_tool": "apply_patch",
+            "arguments": {
+              "command": "*** Begin Patch\n*** Update File: parcelkit/settings.py\n@@\n def merge(base, overrides):\n     result = dict(base)\n-    result.update(overrides)\n+    for key, value in overrides.items():\n+        if isinstance(result.get(key), dict) and isinstance(value, dict):\n+            result[key] = merge(result[key], value)\n+        else:\n+            result[key] = value\n     return result\n*** End Patch\n"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e10",
+            "capability": "filesystem.patch",
+            "source_tool": "apply_patch",
+            "arguments": {
+              "command": "*** Begin Patch\n*** Update File: parcelkit/configuration.py\n@@\n def load_config(file_values, environment, cli_values):\n     result = merge(DEFAULTS, file_values)\n-    result = merge(result, {key: value for key, value in cli_values.items() if value})\n-    return merge(result, environment_values(environment))\n+    result = merge(result, environment_values(environment))\n+    return merge(result, cli_values)\n*** End Patch\n"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e11",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "python3 -m unittest discover -s tests"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          }
+        ],
+        "expected_outcomes": [
+          "Archived CLI receipts and behavior checks passed."
+        ],
+        "provenance": {
+          "source_run": "d0ea4bcb-bcfa-4073-b118-60166a6fcb95",
+          "completion_evidence": {
+            "succeeded": true,
+            "evidence_event_ids": [
+              "e11"
+            ],
+            "verifier": "tool_assertion",
+            "summary": "Archived CLI receipts and behavior checks passed."
+          },
+          "compiler": "deterministic-v1",
+          "removed_events": 6,
+          "contrast_ids": []
+        },
+        "step_graph": {
+          "nodes": [
+            "e1",
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e9",
+            "e10",
+            "e11"
+          ],
+          "edges": []
+        },
+        "capability_signature": [
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "filesystem.patch",
+          "filesystem.patch",
+          "shell.execute",
+          "shell.execute"
+        ],
+        "applicability_conditions": [
+          "capability:filesystem.patch",
+          "capability:shell.execute"
+        ],
+        "risk_cues": [
+          "shell.execute has destructive effects; native approval applies.",
+          "Earlier attempt failed: shell.execute (Bash).",
+          "filesystem.patch has write effects; native approval applies."
+        ],
+        "avoidance_rules": [
+          "Avoid repeating shell.execute without checking its argument shape."
+        ],
+        "recovery_notes": [],
+        "experience": {
+          "reads": [
+            "parcelkit/cli.py",
+            "parcelkit/configuration.py",
+            "parcelkit/settings.py",
+            "tests/test_contracts.py"
+          ],
+          "writes": [
+            "parcelkit/configuration.py",
+            "parcelkit/settings.py"
+          ],
+          "commands": [
+            "'***' Begin Patch '***' Update File: parcelkit/configuration.py @@ def 'load_config(file_values,' environment, 'cli_values):' result = 'merge(DEFAULTS,' 'file_values)' - result = 'merge(result,' '{key:' value for key, value in 'cli_values.items()' if 'value})' - return 'merge(result,' 'environment_values(environment))' + result = 'merge(result,' 'environment_values(environment))' + return 'merge(result,' 'cli_values)' '***' End Patch",
+            "'***' Begin Patch '***' Update File: parcelkit/settings.py @@ def 'merge(base,' 'overrides):' result = 'dict(base)' - 'result.update(overrides)' + for key, value in 'overrides.items():' + if 'isinstance(result.get(key),' 'dict)' and 'isinstance(value,' 'dict):' + 'result[key]' = 'merge(result[key],' 'value)' + else: + 'result[key]' = value return result '***' End Patch",
+            "pwd '&&' rg --files",
+            "python3 -m unittest discover -s tests",
+            "sed -n 1,240p parcelkit/configuration.py",
+            "sed -n 1,260p parcelkit/cli.py",
+            "sed -n 1,260p parcelkit/settings.py",
+            "sed -n 1,260p tests/test_contracts.py"
+          ],
+          "verification_commands": [
+            "python3 -m unittest discover -s tests"
+          ],
+          "actions": [
+            {
+              "step_token": "e2",
+              "reads": [
+                "parcelkit/configuration.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e3",
+              "reads": [
+                "parcelkit/settings.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e4",
+              "reads": [
+                "parcelkit/cli.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e5",
+              "reads": [
+                "tests/test_contracts.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e9",
+              "reads": [],
+              "writes": [
+                "parcelkit/settings.py"
+              ]
+            },
+            {
+              "step_token": "e10",
+              "reads": [],
+              "writes": [
+                "parcelkit/configuration.py"
+              ]
+            }
+          ],
+          "inputs": [
+            "parcelkit/cli.py",
+            "parcelkit/configuration.py",
+            "parcelkit/settings.py",
+            "tests/test_contracts.py"
+          ],
+          "edits": [
+            {
+              "file": "parcelkit/settings.py",
+              "before": "    result.update(overrides)",
+              "after": "    for key, value in overrides.items():\n        if isinstance(result.get(key), dict) and isinstance(value, dict):\n            result[key] = merge(result[key], value)\n        else:\n            result[key] = value"
+            },
+            {
+              "file": "parcelkit/configuration.py",
+              "before": "    result = merge(result, {key: value for key, value in cli_values.items() if value})\n    return merge(result, environment_values(environment))",
+              "after": "    result = merge(result, environment_values(environment))\n    return merge(result, cli_values)"
+            }
+          ]
+        },
+        "guidance_notice": "Untrusted procedural guidance. Validate inputs and tool outputs. Your system permissions and approval requirements always apply."
+      },
+      "created_at": "2026-10-12T20:44:36.941597Z",
+      "updated_at": "2026-10-12T20:44:36.984033Z",
+      "version_history": [
+        {
+          "version": 1,
+          "status": "validated",
+          "successes": 2,
+          "failures": 0
+        }
+      ],
+      "validation_history": [
+        {
+          "run_token": "537c2dad-2a2e-41c2-9f60-e8dc55969846",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e10"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 11,
+              "duration_ms": 9133.797407150269,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        },
+        {
+          "run_token": "0f8c40fc-de72-495c-a98e-7088bd70095c",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e9"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 10,
+              "duration_ms": 7407.38844871521,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        }
+      ],
+      "contrasts": [],
+      "successes": 2,
+      "failures": 0,
+      "confidence": 0.75,
+      "stale": false,
+      "contract_version": "1"
+    },
+    "pagination": {
+      "procedure_token": "1422c3f3-4bd9-4f9e-b583-bec53ad7c5ec",
+      "procedure_version": 1,
+      "visibility_scope": "eval-luna-03",
+      "lifecycle_status": "active",
+      "definition": {
+        "schema_version": "1",
+        "title": "Fix cursor pagination. The ordering must be stable by (created_at, id), cursor continuation must exclude previously returned rows including timestamp ties, and zero/negative limits must fail. Preserve",
+        "intent_signature": "fix cursor pagination the ordering must be stable by created_at id cursor continuation must exclude previously returned rows including timestamp ties and zero negative limits must fail preserve the existing page api and cursor format",
+        "parameters": {},
+        "preconditions": [],
+        "required_capabilities": [
+          "filesystem.patch",
+          "shell.execute"
+        ],
+        "required_permissions": [],
+        "environment_requirements": {},
+        "steps": [
+          {
+            "step_token": "e2",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/pagination.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e3",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,240p' parcelkit/cursors.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e4",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,260p' tests/test_contracts.py"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e5",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "sed -n '1,200p' AGENTS.md"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e6",
+            "capability": "filesystem.patch",
+            "source_tool": "apply_patch",
+            "arguments": {
+              "command": "*** Begin Patch\n*** Update File: parcelkit/pagination.py\n@@\n def page(rows, limit=20, cursor=None):\n-    if limit < 0:\n+    if limit <= 0:\n         raise ValueError(\"limit must be positive\")\n-    ordered = sorted(rows, key=lambda row: row[\"created_at\"])\n+    ordered = sorted(rows, key=lambda row: (row[\"created_at\"], row[\"id\"]))\n*** Update File: parcelkit/cursors.py\n@@\n def encode_cursor(row):\n-    body = json.dumps([row[\"created_at\"], \"\"], separators=(\",\", \":\")).encode()\n+    body = json.dumps([row[\"created_at\"], row[\"id\"]], separators=(\",\", \":\")).encode()\n     return base64.urlsafe_b64encode(body).decode()\n*** End Patch\n"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          },
+          {
+            "step_token": "e9",
+            "capability": "shell.execute",
+            "source_tool": "Bash",
+            "arguments": {
+              "command": "python3 -m unittest discover -s tests"
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "destructive",
+            "requires_approval": true,
+            "critical": false
+          }
+        ],
+        "expected_outcomes": [
+          "Archived CLI receipts and behavior checks passed."
+        ],
+        "provenance": {
+          "source_run": "18603a4a-3386-4d8c-8979-0810471aa253",
+          "completion_evidence": {
+            "succeeded": true,
+            "evidence_event_ids": [
+              "e9"
+            ],
+            "verifier": "tool_assertion",
+            "summary": "Archived CLI receipts and behavior checks passed."
+          },
+          "compiler": "deterministic-v1",
+          "removed_events": 6,
+          "contrast_ids": []
+        },
+        "step_graph": {
+          "nodes": [
+            "e2",
+            "e3",
+            "e4",
+            "e5",
+            "e6",
+            "e9"
+          ],
+          "edges": []
+        },
+        "capability_signature": [
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "filesystem.patch",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute",
+          "shell.execute"
+        ],
+        "applicability_conditions": [
+          "capability:filesystem.patch",
+          "capability:shell.execute"
+        ],
+        "risk_cues": [
+          "shell.execute has destructive effects; native approval applies.",
+          "filesystem.patch has write effects; native approval applies.",
+          "Earlier attempt failed: shell.execute (Bash)."
+        ],
+        "avoidance_rules": [
+          "Avoid repeating shell.execute without checking its argument shape."
+        ],
+        "recovery_notes": [],
+        "experience": {
+          "reads": [
+            "AGENTS.md",
+            "parcelkit/cursors.py",
+            "parcelkit/pagination.py",
+            "tests/test_contracts.py"
+          ],
+          "writes": [
+            "parcelkit/cursors.py",
+            "parcelkit/pagination.py"
+          ],
+          "commands": [
+            "'***' Begin Patch '***' Update File: parcelkit/pagination.py @@ def 'page(rows,' limit=20, 'cursor=None):' - if limit '<' 0: + if limit '<=' 0: raise 'ValueError(limit must be positive)' - ordered = 'sorted(rows,' key=lambda row: 'row[created_at])' + ordered = 'sorted(rows,' key=lambda row: '(row[created_at],' 'row[id]))' '***' Update File: parcelkit/cursors.py @@ def 'encode_cursor(row):' - body = 'json.dumps([row[created_at],' '],' 'separators=(,,' ':)).encode()' + body = 'json.dumps([row[created_at],' 'row[id]],' 'separators=(,,' ':)).encode()' return 'base64.urlsafe_b64encode(body).decode()' '***' End Patch",
+            "python3 -m unittest discover -s tests",
+            "sed -n 1,200p AGENTS.md",
+            "sed -n 1,240p parcelkit/cursors.py",
+            "sed -n 1,240p parcelkit/pagination.py",
+            "sed -n 1,260p tests/test_contracts.py"
+          ],
+          "verification_commands": [
+            "python3 -m unittest discover -s tests"
+          ],
+          "actions": [
+            {
+              "step_token": "e2",
+              "reads": [
+                "parcelkit/pagination.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e3",
+              "reads": [
+                "parcelkit/cursors.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e4",
+              "reads": [
+                "tests/test_contracts.py"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e5",
+              "reads": [
+                "AGENTS.md"
+              ],
+              "writes": []
+            },
+            {
+              "step_token": "e6",
+              "reads": [],
+              "writes": [
+                "parcelkit/cursors.py",
+                "parcelkit/pagination.py"
+              ]
+            }
+          ],
+          "inputs": [
+            "AGENTS.md",
+            "parcelkit/cursors.py",
+            "parcelkit/pagination.py",
+            "tests/test_contracts.py"
+          ],
+          "edits": [
+            {
+              "file": "parcelkit/pagination.py",
+              "before": "    if limit < 0:\n    ordered = sorted(rows, key=lambda row: row[\"created_at\"])",
+              "after": "    if limit <= 0:\n    ordered = sorted(rows, key=lambda row: (row[\"created_at\"], row[\"id\"]))"
+            },
+            {
+              "file": "parcelkit/cursors.py",
+              "before": "    body = json.dumps([row[\"created_at\"], \"\"], separators=(\",\", \":\")).encode()",
+              "after": "    body = json.dumps([row[\"created_at\"], row[\"id\"]], separators=(\",\", \":\")).encode()"
+            }
+          ]
+        },
+        "guidance_notice": "Untrusted procedural guidance. Validate inputs and tool outputs. Your system permissions and approval requirements always apply."
+      },
+      "created_at": "2026-10-12T20:44:37.506627Z",
+      "updated_at": "2026-10-12T20:44:37.550345Z",
+      "version_history": [
+        {
+          "version": 1,
+          "status": "validated",
+          "successes": 2,
+          "failures": 0
+        }
+      ],
+      "validation_history": [
+        {
+          "run_token": "74792c57-9684-4326-9633-002ba9c1eb1f",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e10"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 13,
+              "duration_ms": 11777.836084365845,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        },
+        {
+          "run_token": "3d5108e5-ee79-41f2-969e-e5ece56da0a7",
+          "outcome": {
+            "succeeded": true,
+            "procedure_version": 1,
+            "evidence_event_ids": [
+              "e10"
+            ],
+            "deviations": [],
+            "failure_summary": null
+          },
+          "metrics": {
+            "observed": {
+              "tool_calls": 11,
+              "duration_ms": 10400.13861656189,
+              "tokens": null,
+              "cost_usd": null
+            },
+            "baseline": null
+          }
+        }
+      ],
+      "contrasts": [],
+      "successes": 2,
+      "failures": 0,
+      "confidence": 0.75,
+      "stale": false,
+      "contract_version": "1"
+    }
+  }
+}

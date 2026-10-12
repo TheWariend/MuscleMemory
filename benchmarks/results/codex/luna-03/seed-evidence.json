@@ -1,0 +1,164 @@
+[
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-exports-1",
+    "source_run": "ffbe460e-4f44-4029-87ae-8419b7ac9346",
+    "trace_sha256": "83a766bfd719777bacd271caa5c8a594d7cdd39611f3d344ffd38acdef9e2df0",
+    "receipt_sha256": "b4d770580d3476b22e43c73aecd3803a46f7eea96d1aaf457faa68a1212a54a0",
+    "historical_evidence": true,
+    "imported_run": "5ed2e25a-9dd5-4240-ba16-ca6626369e37",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-exports-2",
+    "source_run": "e86c8e6d-6fb5-4211-8d59-127fde47248b",
+    "trace_sha256": "9e3ccc911a959efb58d347d262ada289e3c0571da933c45af3aaade44ab4009c",
+    "receipt_sha256": "69343d54378b13b1b936d5faf7e366bb67e8f02236ea0a9524f1e77af57ff357",
+    "historical_evidence": true,
+    "imported_run": "0f78dd97-23c9-4c31-84fe-862b359b83ea",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-exports-3",
+    "source_run": "99305953-0f1c-40ab-ae54-dd99134b5370",
+    "trace_sha256": "3108c5cfa4f7a13a232ecd7f7ebc53d81cd312fad5b81e12083966cc7304027f",
+    "receipt_sha256": "db704675f744a6e9e1ec6047c07d5f2caaf8695c3b6eb97d7b01d9b236bcbedc",
+    "historical_evidence": true,
+    "imported_run": "c25ef4a3-b54f-40ce-ac51-c780cbeef56b",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-configuration-0",
+    "source_run": "e15be439-89d4-422b-b306-c62d842f1d2d",
+    "trace_sha256": "1b55024d59386d1313f96050fa3ce1516309b95fc14944c8f00fd92eefb3c2f7",
+    "receipt_sha256": "ca0a12b0dfb0694ecaa0ecd3effff9b81876705cd78f1d576bd10db1472e5c85",
+    "historical_evidence": true,
+    "imported_run": "d0ea4bcb-bcfa-4073-b118-60166a6fcb95",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-configuration-1",
+    "source_run": "e23dd84a-8ce2-4c2c-b060-140f3c0c6577",
+    "trace_sha256": "f0de86075ca0ba5cf175672d07f9fc5a8b2156e8710efc1ac85ee4b8869e570d",
+    "receipt_sha256": "06b1331e5a0670c79da92c5f008aa4ed746ba6e7ec0697fd01370d1ad0d121ca",
+    "historical_evidence": true,
+    "imported_run": "0f8c40fc-de72-495c-a98e-7088bd70095c",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-configuration-2",
+    "source_run": "07609474-2758-4470-addd-a1601b5e704f",
+    "trace_sha256": "7cff6762d1d907ae72b05272b305d6ba8459c28fc9a421176d74bf0d5777f76a",
+    "receipt_sha256": "52b7f597afcf2fb6ffa3066f2f304ec63c74eb7068c27602ffdd7a15ebc04ed8",
+    "historical_evidence": true,
+    "imported_run": "537c2dad-2a2e-41c2-9f60-e8dc55969846",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-pagination-0",
+    "source_run": "b2d51355-1b3c-4b46-9843-ae47bb8f35a9",
+    "trace_sha256": "7e376f7241490c8f21f7874c77071274fe6b1d975437bc2ece8ba182f3eb3c8e",
+    "receipt_sha256": "fe44240a4602c9913f1c2189718a33df8bc0442eee5eadb41d07fb3574c0a6d8",
+    "historical_evidence": true,
+    "imported_run": "18603a4a-3386-4d8c-8979-0810471aa253",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-pagination-1",
+    "source_run": "bea246ea-3736-4db7-9c2f-cfdecdba17a0",
+    "trace_sha256": "2a0ddb77fd0b6bd97ece214905efc47888791f0604fdbe057e9128cdf4734105",
+    "receipt_sha256": "d39ba7b47a9486b00fd73fc6db6113b50c0be864def241e8f2dad2f47833fe82",
+    "historical_evidence": true,
+    "imported_run": "3d5108e5-ee79-41f2-969e-e5ece56da0a7",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  },
+  {
+    "archive": "2026-10-12-completion-03",
+    "label": "warmup-pagination-3",
+    "source_run": "0155e01e-adc6-4c94-a87f-cf90621c8e51",
+    "trace_sha256": "02e943809919e6e973269f864b5f1df119a521521c19a04a4df8e1b176cf3ed2",
+    "receipt_sha256": "7fc601ddd1e24b6ad4b299b29151dec19f12fc1ee10256bece8925eba0790672",
+    "historical_evidence": true,
+    "imported_run": "74792c57-9684-4326-9633-002ba9c1eb1f",
+    "verification": {
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "external_stdout": "{\"passed\": true, \"behavioral_checks\": 187}\n",
+      "external_stderr": "",
+      "public_stdout": "",
+      "public_stderr": "test_config (test_contracts.Contracts.test_config) ... ok\ntest_pages (test_contracts.Contracts.test_pages) ... ok\ntest_statement (test_contracts.Contracts.test_statement) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n"
+    }
+  }
+]
