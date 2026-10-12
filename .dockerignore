@@ -1,0 +1,17 @@
+.venv
+node_modules
+**/node_modules
+**/dist
+**/__pycache__
+.pytest_cache
+.ruff_cache
+*.db*
+*.sqlite*
+.capture-spool
+.musclememory
+*.musclememory-backup-*
+.env
+.git
+*.egg-info
+benchmark-results.json
+

@@ -1,0 +1,24 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+.env
+*.db
+*.db-shm
+*.db-wal
+*.sqlite*
+.capture-spool/
+node_modules/
+dist/
+build/
+benchmark-results.json
+
+.musclememory/
+.models/
+*.musclememory-backup-*
+
+# Local research notes and generated reports (not part of the project)
+research_notes/
+reports/
