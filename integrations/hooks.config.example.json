@@ -1,0 +1,9 @@
+{
+  "url": "http://127.0.0.1:8080",
+  "namespace": "team",
+  "state_dir": "/absolute/private/musclememory-hooks",
+  "env_file": "/absolute/private/musclememory.env",
+  "permissions": [],
+  "environment": {},
+  "tools": {}
+}

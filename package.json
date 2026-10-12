@@ -1,0 +1,12 @@
+{
+  "name": "musclememory-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "workspaces": ["apps/dashboard", "packages/sdk-typescript"],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "test:sdk": "npm test --workspace @thewariend/musclememory"
+  }
+}
+

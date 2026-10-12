@@ -1,0 +1,11 @@
+# Add the chosen entry to your Codex configuration; do not store the secret here.
+[mcp_servers.musclememory]
+url = "http://127.0.0.1:8080/mcp"
+bearer_token_env_var = "MM_API_KEY"
+
+# Alternative local transport (choose one server entry, not both):
+# [mcp_servers.musclememory]
+# command = "/absolute/path/to/musclememory/.venv/bin/musclememory"
+# args = ["stdio"]
+# env_vars = ["MM_API_KEY", "MM_DATABASE_URL"]
+

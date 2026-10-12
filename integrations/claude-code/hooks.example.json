@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/python -m musclememory hooks receive --client claude --config /absolute/private/hooks.config.json",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/python -m musclememory hooks receive --client claude --config /absolute/private/hooks.config.json",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/python -m musclememory hooks receive --client claude --config /absolute/private/hooks.config.json",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/python -m musclememory hooks receive --client claude --config /absolute/private/hooks.config.json",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/absolute/path/to/python -m musclememory hooks receive --client claude --config /absolute/private/hooks.config.json",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

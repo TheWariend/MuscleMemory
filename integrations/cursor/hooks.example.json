@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "/absolute/path/to/python -m musclememory hooks receive --client cursor --config /absolute/private/hooks.config.json",
+        "timeout": 10
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "/absolute/path/to/python -m musclememory hooks receive --client cursor --config /absolute/private/hooks.config.json",
+        "timeout": 10
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "/absolute/path/to/python -m musclememory hooks receive --client cursor --config /absolute/private/hooks.config.json",
+        "timeout": 10
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": "/absolute/path/to/python -m musclememory hooks receive --client cursor --config /absolute/private/hooks.config.json",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "/absolute/path/to/python -m musclememory hooks receive --client cursor --config /absolute/private/hooks.config.json",
+        "timeout": 10
+      }
+    ]
+  }
+}
