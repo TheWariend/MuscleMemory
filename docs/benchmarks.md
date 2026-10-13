@@ -1,5 +1,22 @@
 # Benchmarks
 
+## Check our numbers yourself
+
+```sh
+python benchmarks/reproduce.py check     # offline, seconds: every published file is
+                                         # untouched and every total recomputes
+python benchmarks/reproduce.py rejudge   # offline: rerun SWE-bench's hidden tests on every
+                                         # published Django patch
+python benchmarks/reproduce.py run       # rerun the Django benchmark with your own Codex
+```
+
+`check` needs only Python. `rejudge` and `run` set up a Django clone and a Python 3.11
+environment under `~/.musclememory-bench` the first time. `run` asks before it starts,
+because it spends your Codex quota (about 10 sessions).
+
+Last checked: all published files match their fingerprints, every total recomputes
+exactly, and all ten Django verdicts reproduce when the hidden tests are rerun.
+
 ## Codex with and without MuscleMemory (luna-03)
 
 18 real Codex sessions: three coding tasks, each run three times without memory and three

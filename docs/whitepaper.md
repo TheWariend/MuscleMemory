@@ -353,6 +353,16 @@ judged by the runner's summary line), Django's runner was not recognised, and ed
 documentation after a passing test cancelled it. One scored issue is a small sample. Data
 and report: `benchmarks/results/codex/django-forms-01/`.
 
+### 12.7 Checking the published results
+
+Every run is published with its raw sessions and SHA-256 fingerprints, and one script
+checks them: `python benchmarks/reproduce.py check` confirms every file is unaltered and
+recomputes every total in this paper from the per-session records (all three runs match
+exactly), and `reproduce.py rejudge` reruns SWE-bench's hidden tests against each published
+Django patch (all ten verdicts reproduce). `reproduce.py run` repeats the Django run with
+the reader's own Codex account. The script sets up its own Django clone and Python 3.11
+environment, and was tested from an empty folder.
+
 ## 13. Software verification
 
 The release is covered by automated tests that run on every change in CI:

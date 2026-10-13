@@ -27,6 +27,7 @@ Sonnet 5.5, using skills that Codex had learned, it cut **input tokens by 43.5% 
 calls by 30%**. On real Django issues from SWE-bench, with a skill learned from other
 issues in the same area, Codex solved as many as without memory with about half the tokens
 (a small run; [details](benchmarks/results/codex/django-forms-01/report.md)).
+Check them yourself: `python benchmarks/reproduce.py check`.
 [Codex method and data](benchmarks/results/codex/luna-03/report.md) ·
 [Claude Code run](benchmarks/results/claude/sonnet-01/report.md) ·
 [Whitepaper](docs/whitepaper.md).
