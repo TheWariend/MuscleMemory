@@ -153,3 +153,19 @@ def test_the_test_run_is_taken_out_of_longer_commands(command, test):
     from musclememory.artifacts import test_command
 
     assert test_command(command) == test
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "./tests/runtests.py forms_tests --settings=test_sqlite",
+        "python tests/runtests.py migrations.test_operations 2>&1 | tail -20",
+        "cd tests && python runtests.py model_forms",
+        "tox -e py311",
+    ],
+)
+def test_project_test_runners_count_as_checks(command):
+    from musclememory.artifacts import operation_categories, test_command
+
+    assert "verify" in operation_categories({"command": command}, "shell.execute")
+    assert test_command(command)

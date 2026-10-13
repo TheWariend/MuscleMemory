@@ -70,7 +70,8 @@ def test_codex_receipt_recovery_supports_learning_and_actual_usage(
             tool_use_id="a",
             tool_name="Bash",
             tool_input={"command": "python3 -m unittest"},
-            tool_response="OK",
+            # No exit code and no runner summary: only the Codex receipts can settle it.
+            tool_response="finished",
         ),
         tools,
         runtime,
@@ -852,3 +853,96 @@ def test_claude_shell_session_counts_as_a_check_on_a_codex_skill(
     skills = service.listing(principal, "team", "procedures")["items"]
     assert len(skills) == 1  # a check on the same skill, not a duplicate
     assert skills[0]["successes"] == 3
+
+
+def codex_plain_session(config, turn, prompt, test_output):
+    """Real Codex hooks: terminal output arrives without an exit code."""
+
+    def hook(event, **fields):
+        return run_hook(config, "codex", payload(event, turn_id=turn, **fields))
+
+    hook("UserPromptSubmit", prompt=prompt)
+    steps = [
+        ("Bash", f"{turn}-look", {"command": "sed -n '1,40p' app/rounding.py"}, "def cents(x):"),
+        (
+            "apply_patch",
+            f"{turn}-edit",
+            {
+                "input": "*** Begin Patch\n*** Update File: app/rounding.py\n@@\n-int(x)\n"
+                "+round(x)\n*** End Patch"
+            },
+            "Exit code: 0\nWall time: 0 seconds\nOutput:\nSuccess.",
+        ),
+        ("Bash", f"{turn}-test", {"command": "python tests/runtests.py rounding"}, test_output),
+    ]
+    for tool, source, arguments, response in steps:
+        hook("PreToolUse", tool_name=tool, tool_use_id=source)
+        hook(
+            "PostToolUse",
+            tool_name=tool,
+            tool_use_id=source,
+            tool_input=arguments,
+            tool_response=response,
+        )
+    return hook("Stop")
+
+
+def test_codex_output_without_exit_codes_is_learned_from_the_test_summary(
+    codex_hook_host, service, principal
+):
+    config, *_ = codex_hook_host
+    codex_plain_session(config, "f1", "Fix rounding", "Ran 4 tests in 0.1s\n\nFAILED (failures=1)")
+    assert service.listing(principal, "team", "procedures")["items"] == []
+    codex_plain_session(
+        config, "p1", "Fix rounding", "Warning: truncated output\n...\nRan 4 tests\n\nOK"
+    )
+    [skill] = service.listing(principal, "team", "procedures")["items"]
+    from musclememory.core import InspectInput
+
+    steps = service.inspect(principal, InspectInput(procedure_token=skill["procedure_token"]))[
+        "definition"
+    ]["steps"]
+    # The look-around whose result wasn't confirmed is left out; edit and test stay.
+    assert [step["source_tool"] for step in steps] == ["apply_patch", "Bash"]
+
+
+def test_documentation_edits_after_passing_tests_keep_the_session_verified(
+    codex_hook_host, service, principal
+):
+    config, *_ = codex_hook_host
+
+    def hook(event, **fields):
+        return run_hook(config, "codex", payload(event, turn_id="d1", **fields))
+
+    hook("UserPromptSubmit", prompt="Fix rounding and document it")
+    for tool, source, arguments, response in [
+        (
+            "apply_patch",
+            "edit",
+            {
+                "input": "*** Begin Patch\n*** Update File: app/rounding.py\n"
+                "@@\n-int(x)\n+round(x)\n*** End Patch"
+            },
+            "Exit code: 0\nOutput:\nSuccess.",
+        ),
+        ("Bash", "test", {"command": "python tests/runtests.py rounding"}, "Ran 2 tests\n\nOK"),
+        (
+            "apply_patch",
+            "docs",
+            {
+                "input": "*** Begin Patch\n*** Update File: docs/rounding.txt\n"
+                "@@\n-old\n+new\n*** End Patch"
+            },
+            "Exit code: 0\nOutput:\nSuccess.",
+        ),
+    ]:
+        hook("PreToolUse", tool_name=tool, tool_use_id=source)
+        hook(
+            "PostToolUse",
+            tool_name=tool,
+            tool_use_id=source,
+            tool_input=arguments,
+            tool_response=response,
+        )
+    hook("Stop")
+    assert len(service.listing(principal, "team", "procedures")["items"]) == 1

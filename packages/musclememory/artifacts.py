@@ -14,7 +14,7 @@ from .security import MASK, redact
 WORKSPACE_CHANGES = "$mm_workspace_changes"
 PATH_KEYS = {"path", "file_path", "filename", "file", "target", "output_path"}
 READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc"}
-TESTERS = {"pytest", "unittest", "jest", "vitest", "cargo", "go"}
+TESTERS = {"pytest", "unittest", "jest", "vitest", "cargo", "go", "runtests.py", "tox", "nox"}
 TEST_WORDS = {"test", "tests", "check", "unittest", "unittest.discover"}
 
 
@@ -89,6 +89,27 @@ def test_command(command):
                 kept.append(word)
         return shlex.join(kept) if kept else None
     return None
+
+
+DOC_SUFFIXES = (".md", ".rst", ".txt", ".adoc")
+DOC_NAMES = {"changelog", "changes", "authors", "news", "history", "contributors"}
+
+
+def documentation_only(arguments, effect, capability=""):
+    """A change that touches only documentation, which tests never run."""
+    writes = targets(arguments, effect, capability)[1]
+    if not writes:
+        return False
+    for path in writes:
+        name = posixpath.basename(path).lower()
+        parts = path.lower().split("/")
+        if not (
+            parts[0] in {"docs", "doc"}
+            or name.endswith(DOC_SUFFIXES)
+            or name.split(".")[0] in DOC_NAMES
+        ):
+            return False
+    return True
 
 
 def normalized_command(command):

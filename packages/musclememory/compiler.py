@@ -4,7 +4,7 @@ import json
 import re
 from copy import deepcopy
 
-from .artifacts import command_parts, extract_experience, operation_categories, targets
+from .artifacts import WORKSPACE_CHANGES, command_parts, extract_experience, targets
 from .core import DomainError, ExecutionEvent, LearningPolicy, ProcedureDefinition, ProcedureStep
 from .security import MASK, redact
 
@@ -98,17 +98,16 @@ def compile_trace(
         if blocked.intersection(event.dependencies):
             blocked.add(event.event_id)
     evidence = set(proof.get("evidence_event_ids", []))
-    # A test run whose result cannot be confirmed (for example `tests | tail` with no
-    # summary line) proves nothing and changes nothing, so it is left out like a failed
-    # attempt. Unconfirmed steps that change files still stop learning below.
+    # A step whose result can't be confirmed (a command sent without its exit code, or
+    # `tests | tail` with no summary line) is left out like a failed attempt, unless it
+    # changed project files: the passing test after it confirms those changes.
     unconfirmed_checks = {
         e.event_id
         for e in events
         if e.kind == "tool"
         and not e.outcome_verified
         and e.event_id not in evidence
-        and {"verify"} <= set(operation_categories(e.arguments, e.capability or ""))
-        and "modify" not in operation_categories(e.arguments, e.capability or "")
+        and not e.arguments.get(WORKSPACE_CHANGES)
     }
     selected = {
         e.event_id
@@ -177,7 +176,7 @@ def compile_trace(
             "Failed attempts and unneeded exploration were removed; dependencies retained."
         )
     for event in kept:
-        if not event.outcome_verified:
+        if not event.outcome_verified and not event.arguments.get(WORKSPACE_CHANGES):
             raise DomainError(
                 "unverified_tool_outcome", "Tool outcomes require authoritative evidence"
             )

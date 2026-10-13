@@ -20,7 +20,13 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 from . import workspace
-from .artifacts import PATH_KEYS, WORKSPACE_CHANGES, command_parts, operation_categories
+from .artifacts import (
+    PATH_KEYS,
+    WORKSPACE_CHANGES,
+    command_parts,
+    documentation_only,
+    operation_categories,
+)
 from .core import ExecutionEvent, RuntimeProfile
 from .delivery import render_pointer
 from .sdk import MuscleMemoryClient
@@ -400,6 +406,16 @@ class HookQueue:
                     response.get("exitCode", response.get("exit_code")), int
                 )
                 outcome_verified = bool(code or explicit or failed)
+                if not outcome_verified and "verify" in operation_categories(
+                    arguments, tools[name][0]
+                ):
+                    # Codex hooks often send output without the exit code; a test
+                    # runner's own summary line ("OK", "FAILED (...)") settles it.
+                    verdict = workspace.test_output_verdict(
+                        response if isinstance(response, str) else json.dumps(response)
+                    )
+                    if verdict is not None:
+                        outcome_verified, failed = True, failed or not verdict
                 if not outcome_verified:
                     self.gap(token, "unverified_exit_status")
             command = arguments.get("command")
@@ -469,8 +485,11 @@ class HookQueue:
                 continue
             operations = operation_categories(event["arguments"], event["capability"])
             # A shell command that changed files changed them even if it then failed.
-            if "modify" in operations and (
-                event["status"] == "success" or event["arguments"].get(WORKSPACE_CHANGES)
+            if (
+                "modify" in operations
+                and (event["status"] == "success" or event["arguments"].get(WORKSPACE_CHANGES))
+                # Editing only documentation after the tests passed can't break them.
+                and not documentation_only(event["arguments"], event["effect"], event["capability"])
             ):
                 last_change, passing_test = index, None
             # One command may change files and then run the tests (`script && tests`).
