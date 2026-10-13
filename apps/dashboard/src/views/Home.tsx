@@ -19,7 +19,7 @@ export function Home() {
 
   if (!runs.length) return <section className="card hero">
     <Empty icon="connect" title="Connect your first agent" action={<button type="button" className="primary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>
-      MuscleMemory watches your coding agent work. When a task really succeeds, it learns how it was done and hands that to the agent next time a similar task comes up.
+      MuscleMemory watches your agent work. When a task really succeeds, it learns how it was done and hands that to the agent next time a similar task comes up.
     </Empty>
   </section>;
 

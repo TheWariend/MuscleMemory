@@ -1,6 +1,6 @@
 # How MuscleMemory works
 
-MuscleMemory watches your coding agent work. When a task really succeeds, it
+MuscleMemory watches your agent work. When a task really succeeds, it
 learns how the task was done. The next time a similar task comes up, it hands the
 agent a short pointer: which files to change, how to check the result, and what
 to avoid. The agent still decides what to do.

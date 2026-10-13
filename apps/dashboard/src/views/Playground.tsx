@@ -67,7 +67,7 @@ export function Playground() {
     <div className="chat-log">
       {!turns.length && <div className="chat-intro">
         <h2>Preview what your agent gets</h2>
-        <p>Type a task the way you’d give it to your coding agent. You’ll see which of your skills it would get and the exact text MuscleMemory would add to its prompt. This is only a preview: nothing is sent to your agent.</p>
+        <p>Type a task the way you’d give it to your agent. You’ll see which of your skills it would get and the exact text MuscleMemory would add to its prompt. This is only a preview: nothing is sent to your agent.</p>
       </div>}
       {turns.map(t => <div className="turn" key={t.id}>
         <div className="bubble you"><span className="who">You</span><p>{t.task}</p></div>

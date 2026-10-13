@@ -8,7 +8,7 @@
 <h1 align="center">MuscleMemory</h1>
 
 <p align="center">
-  <strong>Open-source procedural memory for coding agents.</strong><br>
+  <strong>Open-source procedural memory for AI agents.</strong><br>
   It learns from what worked and what failed.<br>
   Local by default · Apache-2.0 · by TheWariend
 </p>
