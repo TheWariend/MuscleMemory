@@ -1,0 +1,87 @@
+diff --git a/tests/admin_views/admin.py b/tests/admin_views/admin.py
+index aa8b183..7ddd56a 100644
+--- a/tests/admin_views/admin.py
++++ b/tests/admin_views/admin.py
+@@ -84,6 +84,8 @@ from .models import (
+     Parent,
+     ParentWithDependentChildren,
+     ParentWithUUIDPK,
++    ParentWithUUID,
++    RelatedToParentWithUUID,
+     Person,
+     Persona,
+     Picture,
+@@ -1246,6 +1248,11 @@ site.register(ReferencedByInline)
+ site.register(InlineReferer, InlineRefererAdmin)
+ site.register(ReferencedByGenRel)
+ site.register(GenRelReference)
++class RelatedToParentWithUUIDInline(admin.StackedInline):
++    model = RelatedToParentWithUUID
++
++
++site.register(ParentWithUUID, inlines=[RelatedToParentWithUUIDInline])
+ site.register(ParentWithUUIDPK)
+ site.register(RelatedPrepopulated, search_fields=["name"])
+ site.register(RelatedWithUUIDPKModel)
+diff --git a/tests/admin_views/models.py b/tests/admin_views/models.py
+index 85facf8..3974adf 100644
+--- a/tests/admin_views/models.py
++++ b/tests/admin_views/models.py
+@@ -1058,6 +1058,20 @@ class ParentWithUUIDPK(models.Model):
+         return str(self.id)
+ 
+ 
++class ParentWithUUID(models.Model):
++    pkid = models.BigAutoField(primary_key=True, editable=False)
++    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
++    title = models.CharField(max_length=100)
++
++
++class RelatedToParentWithUUID(models.Model):
++    name = models.CharField(max_length=100)
++    parent = models.ForeignKey(
++        ParentWithUUID, to_field="id", on_delete=models.CASCADE,
++        related_name="related_items",
++    )
++
++
+ class RelatedWithUUIDPKModel(models.Model):
+     parent = models.ForeignKey(
+         ParentWithUUIDPK, on_delete=models.SET_NULL, null=True, blank=True
+diff --git a/tests/admin_views/tests.py b/tests/admin_views/tests.py
+index 26eba69..999a63c 100644
+--- a/tests/admin_views/tests.py
++++ b/tests/admin_views/tests.py
+@@ -98,6 +98,8 @@ from .models import (
+     Parent,
+     ParentWithDependentChildren,
+     ParentWithUUIDPK,
++    ParentWithUUID,
++    RelatedToParentWithUUID,
+     Person,
+     Persona,
+     Picture,
+@@ -5247,6 +5249,23 @@ class AdminInlineTests(TestCase):
+ 
+         self.client.force_login(self.superuser)
+ 
++    def test_inline_with_uuid_to_field(self):
++        response = self.client.post(
++            reverse("admin:admin_views_parentwithuuid_add"),
++            {
++                "title": "Parent",
++                "related_items-TOTAL_FORMS": "1",
++                "related_items-INITIAL_FORMS": "0",
++                "related_items-MIN_NUM_FORMS": "0",
++                "related_items-MAX_NUM_FORMS": "1000",
++                "related_items-0-name": "Child",
++            },
++        )
++        self.assertEqual(response.status_code, 302)
++        parent = ParentWithUUID.objects.get(title="Parent")
++        self.assertEqual(parent.related_items.get().name, "Child")
++        self.assertIsNotNone(parent.id)
++
+     def test_simple_inline(self):
+         "A simple model can be saved as inlines"
+         # First add a new inline

@@ -1,0 +1,41 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 3fa04b8..030979a 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1177,7 +1177,7 @@ class BaseInlineFormSet(BaseModelFormSet):
+                 to_field = self.instance._meta.get_field(kwargs["to_field"])
+             else:
+                 to_field = self.instance._meta.pk
+-            if to_field.has_default():
++            if to_field == self.instance._meta.pk and to_field.has_default():
+                 setattr(self.instance, to_field.attname, None)
+ 
+         form.fields[name] = InlineForeignKeyField(self.instance, **kwargs)
+diff --git a/tests/admin_views/tests.py b/tests/admin_views/tests.py
+index 26eba69..ca34cd4 100644
+--- a/tests/admin_views/tests.py
++++ b/tests/admin_views/tests.py
+@@ -26,6 +26,7 @@ from django.core.checks import Error
+ from django.core.files import temp as tempfile
+ from django.db import connection
+ from django.forms.utils import ErrorList
++from django.forms.models import inlineformset_factory
+ from django.template.response import TemplateResponse
+ from django.test import (
+     RequestFactory,
+@@ -5158,6 +5159,15 @@ class AdminInlineFileUploadTest(TestCase):
+ 
+ @override_settings(ROOT_URLCONF="admin_views.urls")
+ class AdminInlineTests(TestCase):
++    def test_inline_preserves_default_to_field_value(self):
++        formset_class = inlineformset_factory(
++            Question, Answer, fk_name="question_with_to_field", fields=("answer",)
++        )
++        question = Question()
++        uuid = question.uuid
++        formset = formset_class(instance=question)
++        self.assertEqual(formset.instance.uuid, uuid)
++
+     @classmethod
+     def setUpTestData(cls):
+         cls.superuser = User.objects.create_superuser(

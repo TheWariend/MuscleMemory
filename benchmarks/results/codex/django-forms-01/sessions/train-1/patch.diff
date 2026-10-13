@@ -1,0 +1,128 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 7effb20..0bf90fd 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -568,6 +568,7 @@ class BaseModelFormSet(BaseFormSet):
+     A ``FormSet`` for editing a queryset and/or adding new objects to it.
+     """
+     model = None
++    edit_only = False
+ 
+     # Set of fields that must be unique among forms of this set.
+     unique_fields = set()
+@@ -813,6 +814,8 @@ class BaseModelFormSet(BaseFormSet):
+ 
+     def save_new_objects(self, commit=True):
+         self.new_objects = []
++        if self.edit_only:
++            return self.new_objects
+         for form in self.extra_forms:
+             if not form.has_changed():
+                 continue
+@@ -875,7 +878,8 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                          widgets=None, validate_max=False, localized_fields=None,
+                          labels=None, help_texts=None, error_messages=None,
+                          min_num=None, validate_min=False, field_classes=None,
+-                         absolute_max=None, can_delete_extra=True, renderer=None):
++                         absolute_max=None, can_delete_extra=True, renderer=None,
++                         edit_only=False):
+     """Return a FormSet class for the given Django model class."""
+     meta = getattr(form, 'Meta', None)
+     if (getattr(meta, 'fields', fields) is None and
+@@ -896,6 +900,7 @@ def modelformset_factory(model, form=ModelForm, formfield_callback=None,
+                               absolute_max=absolute_max, can_delete_extra=can_delete_extra,
+                               renderer=renderer)
+     FormSet.model = model
++    FormSet.edit_only = edit_only
+     return FormSet
+ 
+ 
+@@ -1076,7 +1081,8 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+                           widgets=None, validate_max=False, localized_fields=None,
+                           labels=None, help_texts=None, error_messages=None,
+                           min_num=None, validate_min=False, field_classes=None,
+-                          absolute_max=None, can_delete_extra=True, renderer=None):
++                          absolute_max=None, can_delete_extra=True, renderer=None,
++                          edit_only=False):
+     """
+     Return an ``InlineFormSet`` for the given kwargs.
+ 
+@@ -1107,6 +1113,7 @@ def inlineformset_factory(parent_model, model, form=ModelForm,
+         'error_messages': error_messages,
+         'field_classes': field_classes,
+         'absolute_max': absolute_max,
++        'edit_only': edit_only,
+         'can_delete_extra': can_delete_extra,
+         'renderer': renderer,
+     }
+diff --git a/docs/ref/forms/models.txt b/docs/ref/forms/models.txt
+index c0f0757..85b9fa7 100644
+--- a/docs/ref/forms/models.txt
++++ b/docs/ref/forms/models.txt
+@@ -52,7 +52,7 @@ Model Form API reference. For introductory material about model forms, see the
+ ``modelformset_factory``
+ ========================
+ 
+-.. function:: modelformset_factory(model, form=ModelForm, formfield_callback=None, formset=BaseModelFormSet, extra=1, can_delete=False, can_order=False, max_num=None, fields=None, exclude=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None)
++.. function:: modelformset_factory(model, form=ModelForm, formfield_callback=None, formset=BaseModelFormSet, extra=1, can_delete=False, can_order=False, max_num=None, fields=None, exclude=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None, edit_only=False)
+ 
+     Returns a ``FormSet`` class for the given ``model`` class.
+ 
+@@ -67,6 +67,10 @@ Model Form API reference. For introductory material about model forms, see the
+     through to :func:`~django.forms.formsets.formset_factory`. See
+     :doc:`formsets </topics/forms/formsets>` for details.
+ 
++    If ``edit_only=True``, the formset won't save new objects. This is useful
++    when using a model formset to edit existing objects without allowing
++    object creation, regardless of the number of extra forms submitted.
++
+     See :ref:`model-formsets` for example usage.
+ 
+     .. versionchanged:: 4.0
+@@ -76,7 +80,7 @@ Model Form API reference. For introductory material about model forms, see the
+ ``inlineformset_factory``
+ =========================
+ 
+-.. function:: inlineformset_factory(parent_model, model, form=ModelForm, formset=BaseInlineFormSet, fk_name=None, fields=None, exclude=None, extra=3, can_order=False, can_delete=True, max_num=None, formfield_callback=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None)
++.. function:: inlineformset_factory(parent_model, model, form=ModelForm, formset=BaseInlineFormSet, fk_name=None, fields=None, exclude=None, extra=3, can_order=False, can_delete=True, max_num=None, formfield_callback=None, widgets=None, validate_max=False, localized_fields=None, labels=None, help_texts=None, error_messages=None, min_num=None, validate_min=False, field_classes=None, absolute_max=None, can_delete_extra=True, renderer=None, edit_only=False)
+ 
+     Returns an ``InlineFormSet`` using :func:`modelformset_factory` with
+     defaults of ``formset=``:class:`~django.forms.models.BaseInlineFormSet`,
+@@ -90,3 +94,7 @@ Model Form API reference. For introductory material about model forms, see the
+     .. versionchanged:: 4.0
+ 
+         The ``renderer`` argument was added.
++
++    .. versionadded:: 4.1
++
++        The ``edit_only`` argument was added.
+diff --git a/tests/model_formsets/tests.py b/tests/model_formsets/tests.py
+index bb1a8a8..ec3f396 100644
+--- a/tests/model_formsets/tests.py
++++ b/tests/model_formsets/tests.py
+@@ -134,6 +134,25 @@ class DeletionTests(TestCase):
+ 
+ 
+ class ModelFormsetTest(TestCase):
++    def test_edit_only(self):
++        author = Author.objects.create(name='Old name')
++        AuthorFormSet = modelformset_factory(
++            Author, fields='__all__', extra=0, edit_only=True,
++        )
++        formset = AuthorFormSet(data={
++            'form-TOTAL_FORMS': '2',
++            'form-INITIAL_FORMS': '1',
++            'form-MAX_NUM_FORMS': '',
++            'form-0-id': str(author.pk),
++            'form-0-name': 'New name',
++            'form-1-name': 'Injected name',
++        })
++        self.assertTrue(formset.is_valid())
++        self.assertEqual(formset.save(), [author])
++        author.refresh_from_db()
++        self.assertEqual(author.name, 'New name')
++        self.assertFalse(Author.objects.filter(name='Injected name').exists())
++
+     def test_modelformset_factory_without_fields(self):
+         """ Regression for #19733 """
+         message = (

@@ -1,0 +1,44 @@
+{
+  "label": "score-16950-r1-musclememory",
+  "instance_id": "django__django-16950",
+  "arm": "musclememory",
+  "model": "gpt-6-luna",
+  "returncode": 0,
+  "seconds": 95.1,
+  "input_tokens": 407048,
+  "cached_input_tokens": 377600,
+  "uncached_input_tokens": 29448,
+  "output_tokens": 2428,
+  "tool_calls": 13,
+  "failed_tool_calls": 2,
+  "resolved": false,
+  "fail_to_pass": [
+    1,
+    1
+  ],
+  "pass_to_pass": [
+    0,
+    3
+  ],
+  "hook_runs": [
+    {
+      "token": "6915a287-84d5-45cb-8925-cf20ff33d157",
+      "closed": 1,
+      "gaps": [
+        "unverified_exit_status",
+        "parallel_tool_dependencies_unknown",
+        "unfinished_tool"
+      ]
+    }
+  ],
+  "injected": [
+    {
+      "identity": "003eb6f0e32c456df471fd1c11de0fb4fe449f350f3ee1e1674d235697854ff5",
+      "session": "b02d720e732935a1182cf25cdf41977ef86011defe9a7d3c8a97ec20fe535bf3",
+      "procedure": "bf5630d2-1729-4ca8-9a59-029c8e4bc7d2",
+      "version": 1,
+      "context_hash": "d8da4e33849143a9ad841376ae8b169602ec0c1de9a260fc68c03e6fd75204c6",
+      "tokens": 327
+    }
+  ]
+}

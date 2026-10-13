@@ -1,0 +1,32 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 5dcf923..bc7e695 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1171,6 +1171,9 @@ class ModelChoiceIteratorValue:
+             other = other.value
+         return self.value == other
+ 
++    def __hash__(self):
++        return hash(self.value)
++
+ 
+ class ModelChoiceIterator:
+     def __init__(self, field):
+diff --git a/tests/model_forms/test_modelchoicefield.py b/tests/model_forms/test_modelchoicefield.py
+index 2a0c05d..94d35a3 100644
+--- a/tests/model_forms/test_modelchoicefield.py
++++ b/tests/model_forms/test_modelchoicefield.py
+@@ -305,6 +305,13 @@ class ModelChoiceFieldTests(TestCase):
+             ) % (self.c1.pk, self.c2.pk, self.c3.pk),
+         )
+ 
++    def test_choice_iterator_value_is_hashable(self):
++        field = forms.ModelChoiceField(Category.objects.all())
++        value = list(field.choices)[1][0]
++        fields = {self.c1.pk: ['first_name', 'last_name']}
++        self.assertIn(value, fields)
++        self.assertEqual(fields[value], ['first_name', 'last_name'])
++
+     def test_custom_choice_iterator_passes_model_to_widget(self):
+         class CustomModelChoiceValue:
+             def __init__(self, value, obj):

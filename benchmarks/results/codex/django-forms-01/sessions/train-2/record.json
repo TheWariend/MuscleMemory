@@ -1,0 +1,33 @@
+{
+  "label": "train-2",
+  "instance_id": "django__django-14915",
+  "arm": "musclememory",
+  "model": "gpt-6-luna",
+  "returncode": 0,
+  "seconds": 36.8,
+  "input_tokens": 116673,
+  "cached_input_tokens": 105728,
+  "uncached_input_tokens": 10945,
+  "output_tokens": 1083,
+  "tool_calls": 7,
+  "failed_tool_calls": 0,
+  "resolved": true,
+  "fail_to_pass": [
+    1,
+    1
+  ],
+  "pass_to_pass": [
+    23,
+    23
+  ],
+  "hook_runs": [
+    {
+      "token": "d12d6e6e-ce2f-43c2-8a20-383d1d6e1d6f",
+      "closed": 1,
+      "gaps": [
+        "unverified_exit_status"
+      ]
+    }
+  ],
+  "injected": []
+}

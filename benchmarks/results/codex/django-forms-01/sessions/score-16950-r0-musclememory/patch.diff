@@ -1,0 +1,110 @@
+diff --git a/django/forms/models.py b/django/forms/models.py
+index 3fa04b8..d4dce9b 100644
+--- a/django/forms/models.py
++++ b/django/forms/models.py
+@@ -1177,7 +1177,7 @@ class BaseInlineFormSet(BaseModelFormSet):
+                 to_field = self.instance._meta.get_field(kwargs["to_field"])
+             else:
+                 to_field = self.instance._meta.pk
+-            if to_field.has_default():
++            if to_field.primary_key and to_field.has_default():
+                 setattr(self.instance, to_field.attname, None)
+ 
+         form.fields[name] = InlineForeignKeyField(self.instance, **kwargs)
+diff --git a/tests/admin_inlines/admin.py b/tests/admin_inlines/admin.py
+index 0ec56d7..de10d2e 100644
+--- a/tests/admin_inlines/admin.py
++++ b/tests/admin_inlines/admin.py
+@@ -55,6 +55,8 @@ from .models import (
+     Teacher,
+     Title,
+     TitleCollection,
++    UUIDChild,
++    UUIDParent,
+ )
+ 
+ site = admin.AdminSite(name="admin")
+@@ -459,6 +461,13 @@ site.register(CourseProxy, ClassAdminStackedVertical)
+ site.register(CourseProxy1, ClassAdminTabularVertical)
+ site.register(CourseProxy2, ClassAdminTabularHorizontal)
+ site.register(ShowInlineParent, ShowInlineParentAdmin)
++
++
++class UUIDChildInline(admin.StackedInline):
++    model = UUIDChild
++
++
++site.register(UUIDParent, inlines=[UUIDChildInline])
+ # Used to test hidden fields in tabular and stacked inlines.
+ site2 = admin.AdminSite(name="tabular_inline_hidden_field_admin")
+ site2.register(SomeParentModel, inlines=[ChildHiddenFieldTabularInline])
+diff --git a/tests/admin_inlines/models.py b/tests/admin_inlines/models.py
+index a8d2ee0..b6831e3 100644
+--- a/tests/admin_inlines/models.py
++++ b/tests/admin_inlines/models.py
+@@ -2,6 +2,7 @@
+ Testing of admin inline formsets.
+ """
+ import random
++import uuid
+ 
+ from django.contrib.contenttypes.fields import GenericForeignKey
+ from django.contrib.contenttypes.models import ContentType
+@@ -355,6 +356,19 @@ class ProfileCollection(models.Model):
+     pass
+ 
+ 
++class UUIDParent(models.Model):
++    pkid = models.BigAutoField(primary_key=True, editable=False)
++    id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
++    name = models.CharField(max_length=50)
++
++
++class UUIDChild(models.Model):
++    name = models.CharField(max_length=50)
++    parent = models.ForeignKey(
++        UUIDParent, to_field="id", on_delete=models.CASCADE, related_name="children"
++    )
++
++
+ class Profile(models.Model):
+     collection = models.ForeignKey(
+         ProfileCollection, models.SET_NULL, blank=True, null=True
+diff --git a/tests/admin_inlines/tests.py b/tests/admin_inlines/tests.py
+index 9533cc9..05aed91 100644
+--- a/tests/admin_inlines/tests.py
++++ b/tests/admin_inlines/tests.py
+@@ -42,6 +42,8 @@ from .models import (
+     SomeChildModel,
+     SomeParentModel,
+     Teacher,
++    UUIDChild,
++    UUIDParent,
+     VerboseNamePluralProfile,
+     VerboseNameProfile,
+ )
+@@ -142,6 +144,24 @@ class TestInline(TestDataMixin, TestCase):
+         self.assertEqual(response.status_code, 302)
+         self.assertEqual(len(Fashionista.objects.filter(person__firstname="Imelda")), 1)
+ 
++    def test_inline_foreign_key_to_default_uuid_field(self):
++        data = {
++            "name": "parent",
++            "children-TOTAL_FORMS": 1,
++            "children-INITIAL_FORMS": 0,
++            "children-MIN_NUM_FORMS": 0,
++            "children-MAX_NUM_FORMS": 1000,
++            "children-0-name": "child",
++            "_save": "Save",
++        }
++        response = self.client.post(
++            reverse("admin:admin_inlines_uuidparent_add"), data
++        )
++        self.assertEqual(response.status_code, 302)
++        parent = UUIDParent.objects.get(name="parent")
++        child = UUIDChild.objects.get(name="child")
++        self.assertEqual(child.parent_id, parent.id)
++
+     def test_tabular_inline_column_css_class(self):
+         """
+         Field names are included in the context to output a field-specific

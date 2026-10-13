@@ -1,0 +1,160 @@
+{
+  "campaign": {
+    "group": "model-forms",
+    "model": "gpt-6-luna",
+    "train": [
+      "django__django-13933",
+      "django__django-14725",
+      "django__django-14915",
+      "django__django-15916"
+    ],
+    "score": [
+      "django__django-16950"
+    ],
+    "usable_pass_to_pass": {
+      "django__django-13933": null,
+      "django__django-14725": null,
+      "django__django-14915": null,
+      "django__django-15916": null,
+      "django__django-16950": null
+    },
+    "created": "2026-10-13T10:56:34Z"
+  },
+  "training": [
+    {
+      "label": "train-0",
+      "instance_id": "django__django-13933",
+      "resolved": true,
+      "input_tokens": 215206,
+      "tool_calls": 10,
+      "seconds": 52.1,
+      "learned_or_checked": true
+    },
+    {
+      "label": "train-1",
+      "instance_id": "django__django-14725",
+      "resolved": true,
+      "input_tokens": 305488,
+      "tool_calls": 14,
+      "seconds": 70.4,
+      "learned_or_checked": true
+    },
+    {
+      "label": "train-2",
+      "instance_id": "django__django-14915",
+      "resolved": true,
+      "input_tokens": 116673,
+      "tool_calls": 7,
+      "seconds": 36.8,
+      "learned_or_checked": true
+    },
+    {
+      "label": "train-3",
+      "instance_id": "django__django-15916",
+      "resolved": false,
+      "input_tokens": 260240,
+      "tool_calls": 11,
+      "seconds": 117.8,
+      "learned_or_checked": true
+    }
+  ],
+  "skills": [
+    {
+      "procedure": "bf5630d2-1729-4ca8-9a59-029c8e4bc7d2",
+      "lifecycle": "active",
+      "approved": true,
+      "successes": 2,
+      "validation": "validated",
+      "title": "ModelChoiceField does not provide value of invalid choice when raising Validatio"
+    },
+    {
+      "procedure": "5999443e-b391-46e7-940a-2be71870ad00",
+      "lifecycle": "provisional",
+      "approved": true,
+      "successes": 0,
+      "validation": "provisional",
+      "title": "Allow ModelForm meta to specify formfield_callback.\nDescription\n\t \n\t\t(last modif"
+    }
+  ],
+  "totals": {
+    "off": {
+      "sessions": 3,
+      "resolved": 1,
+      "input_tokens": 1645818,
+      "uncached_input_tokens": 152314,
+      "output_tokens": 11566,
+      "tool_calls": 60,
+      "seconds": 247.0,
+      "skill_handed_over": 0
+    },
+    "musclememory": {
+      "sessions": 3,
+      "resolved": 1,
+      "input_tokens": 815216,
+      "uncached_input_tokens": 72816,
+      "output_tokens": 5914,
+      "tool_calls": 28,
+      "seconds": 217.0,
+      "skill_handed_over": 3
+    }
+  },
+  "pairs": [
+    {
+      "pair": "score-16950-r0",
+      "input_tokens": [
+        600055,
+        263686
+      ],
+      "tool_calls": [
+        24,
+        10
+      ],
+      "seconds": [
+        108.1,
+        81.1
+      ],
+      "resolved": [
+        false,
+        true
+      ]
+    },
+    {
+      "pair": "score-16950-r1",
+      "input_tokens": [
+        359567,
+        407048
+      ],
+      "tool_calls": [
+        16,
+        13
+      ],
+      "seconds": [
+        66.6,
+        95.1
+      ],
+      "resolved": [
+        true,
+        false
+      ]
+    },
+    {
+      "pair": "score-16950-r2",
+      "input_tokens": [
+        686196,
+        144482
+      ],
+      "tool_calls": [
+        20,
+        5
+      ],
+      "seconds": [
+        72.3,
+        40.8
+      ],
+      "resolved": [
+        false,
+        false
+      ]
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "label": "score-16950-r2-off",
+  "instance_id": "django__django-16950",
+  "arm": "off",
+  "model": "gpt-6-luna",
+  "returncode": 0,
+  "seconds": 72.3,
+  "input_tokens": 686196,
+  "cached_input_tokens": 616192,
+  "uncached_input_tokens": 70004,
+  "output_tokens": 3601,
+  "tool_calls": 20,
+  "failed_tool_calls": 2,
+  "resolved": false,
+  "fail_to_pass": [
+    0,
+    1
+  ],
+  "pass_to_pass": [
+    3,
+    3
+  ],
+  "hook_runs": [],
+  "injected": []
+}
