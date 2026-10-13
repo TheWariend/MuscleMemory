@@ -5,7 +5,7 @@
 - Automatic capture from Claude Code, Codex and Cursor hooks, plus CleanSlate and the
   Python and TypeScript SDKs.
 - Automatic learning from sessions whose tests pass after the last code change.
-  Hooks only: CleanSlate and SDK sessions are recorded but don't learn by themselves yet.
+  Hooks and CleanSlate (CLI and desktop); SDK sessions are learned when your code reports success.
 - Code changes made from the shell (scripts, heredocs, `sed -i`) are seen by comparing
   which project files differ from git around each command.
 - Skills move between agents: one learned with Codex is handed to Claude Code and
@@ -32,7 +32,7 @@
 3. **Learn which skills help.** Record every inject or skip decision, measure token
    and success differences per skill, and retire skills that don't help. This needs
    a few hundred real sessions first.
-4. **Automatic learning for CleanSlate and the SDKs**, matching the hooks.
+4. **Automatic learning for custom SDK agents**, matching the hooks and CleanSlate.
 5. **Disconnect command** and per-project opt-out.
 6. **A larger Claude Code benchmark**, with repeats and skills learned by Claude Code
    itself, to follow the early sonnet-01 run.

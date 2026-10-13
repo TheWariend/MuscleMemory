@@ -25,6 +25,27 @@ Full method, per-task numbers, the one rule change made during the run, and limi
   rate (every memory-off session also passed).
 - Token use varies between runs, so each task ran three times and the spread is published.
 
+## Real Django issues from SWE-bench (django-forms-01, small)
+
+Codex with `gpt-6-luna` on five real Django issues from SWE-bench Verified that all touch
+`django/forms/models.py`, judged by SWE-bench's own hidden tests. MuscleMemory learned
+from the four oldest (one skill passed two checks on different issues and was kept),
+then the newest issue was run three times with memory and three times without.
+
+| Issue 16950, 3 repeats | Memory off | MuscleMemory | Change |
+|---|---:|---:|---:|
+| Resolved (hidden tests) | 1 / 3 | 1 / 3 | same |
+| Input tokens | 1,645,818 | 815,216 | −50.5% |
+| Tool calls | 60 | 28 | −53.3% |
+| Wall time | 247 s | 217 s | −12.1% |
+
+The same success rate, at about half the tokens on average. One memory session gave up
+early, which accounts for part of that; comparing only the resolved sessions, memory used
+27% fewer input tokens. One scored issue is a small sample. Running it also found and fixed
+real gaps: Codex hooks send no exit codes, Django's test runner wasn't recognised, and
+documentation edits after a passing test cancelled it. The report covers all of it:
+[benchmarks/results/codex/django-forms-01/report.md](../benchmarks/results/codex/django-forms-01/report.md).
+
 ## Claude Code with MuscleMemory (sonnet-01, early)
 
 Eight real Claude Code sessions with Sonnet 5.5: four pairs on the same three repair tasks,

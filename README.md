@@ -24,7 +24,9 @@ test that proves it worked, and what to avoid.
 In a benchmark with real Codex sessions, it cut **input tokens by 25.5%, tool calls by 30.4%
 and time by 28.2%**, with every task still passing. In an early run with Claude Code and
 Sonnet 5.5, using skills that Codex had learned, it cut **input tokens by 43.5% and tool
-calls by 30%**.
+calls by 30%**. On real Django issues from SWE-bench, with a skill learned from other
+issues in the same area, Codex solved as many as without memory with about half the tokens
+(a small run; [details](benchmarks/results/codex/django-forms-01/report.md)).
 [Codex method and data](benchmarks/results/codex/luna-03/report.md) ·
 [Claude Code run](benchmarks/results/claude/sonnet-01/report.md) ·
 [Whitepaper](docs/whitepaper.md).
@@ -113,7 +115,8 @@ See [Integrations](docs/integrations.md).
 
 MuscleMemory works and is tested: 126 Python tests on SQLite and PostgreSQL, and 21
 TypeScript tests. It's early. The benchmarks cover repeat tasks on three controlled codebases,
-not every kind of work, and the Claude Code run is small. CleanSlate and the SDKs don't learn on their own yet; the hooks do.
+not every kind of work, and the Claude Code run is small. The hooks and CleanSlate learn on their own; with the SDKs your code
+reports when a task succeeded.
 See the [roadmap](docs/roadmap.md).
 
 Issues and pull requests are welcome. Please report security issues privately, as

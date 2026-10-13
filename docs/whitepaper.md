@@ -328,6 +328,31 @@ before the last fix; those duplicates were removed and the same sessions re-subm
 they counted as checks. With one session per arm, this is an early signal, not a benchmark.
 Data and report: `benchmarks/results/claude/sonnet-01/`.
 
+### 12.6 Real Django issues from SWE-bench (small)
+
+To test on real work, Codex (`gpt-6-luna`) ran five real Django issues from SWE-bench
+Verified that all change `django/forms/models.py`, judged by SWE-bench's hidden tests on a
+local Python 3.11 (every issue's official fix was first confirmed to pass there). Memory
+learned from the four oldest issues: the first became a skill, the next two counted as its
+two checks, and it was kept. The fourth produced a skill from a session the hidden tests say
+failed, even though Codex's own tests passed; with no checks, that skill never reached an
+agent. The newest issue (#16950) was then run three times with and without memory, with
+learning frozen.
+
+| Issue 16950, 3 repeats | Memory off | MuscleMemory | Change |
+| --- | ---: | ---: | ---: |
+| Resolved (hidden tests) | 1 / 3 | 1 / 3 | same |
+| Input tokens | 1,645,818 | 815,216 | −50.5% |
+| Tool calls | 60 | 28 | −53.3% |
+| Wall time | 247 s | 217 s | −12.1% |
+
+Success was unchanged; tokens fell by about half on average, partly because one memory
+session gave up early (resolved sessions alone: −27%). This run found three more
+integration gaps, fixed before scoring: Codex hooks report no exit codes (test runs are now
+judged by the runner's summary line), Django's runner was not recognised, and editing only
+documentation after a passing test cancelled it. One scored issue is a small sample. Data
+and report: `benchmarks/results/codex/django-forms-01/`.
+
 ## 13. Software verification
 
 The release is covered by automated tests that run on every change in CI:
@@ -367,8 +392,8 @@ SIGIR 2009), MiniLM sentence embeddings
   commits them, or leaves them as they were, does not register as a code change.
 - Sessions with parallel tool calls, or a missing "tool finished" event, are kept but not
   learned from.
-- CleanSlate and the SDKs record sessions but do not learn from them automatically yet;
-  the Claude Code, Codex and Cursor hooks do.
+- Custom agents built on the SDKs are learned from only when their code reports success;
+  the Claude Code, Codex and Cursor hooks and CleanSlate decide this automatically.
 - The benchmarks cover three controlled tasks, and the Claude Code run has one session
   per arm. Larger, independent evaluations on real repositories are still needed.
 - A full 100,000-skill scale run has not been completed.
@@ -381,7 +406,7 @@ SIGIR 2009), MiniLM sentence embeddings
    error signature, using only fixes that a later passing run confirmed.
 3. **Learn which skills help.** Record every inject or skip decision, measure the token
    and success difference per skill, and retire skills that do not help.
-4. Automatic learning for CleanSlate and the SDKs, a disconnect command, a larger Claude
+4. Automatic learning for custom SDK agents, a disconnect command, a larger Claude
    Code benchmark with skills learned by Claude Code itself, and scale results for
    100,000 skills.
 
