@@ -58,7 +58,7 @@ export function Playground() {
     } finally {setBusy(false);}
   }
 
-  if (procedures && !ready.length) return <div className="card"><Empty icon="recall" title="Nothing to try yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'skills'})}>See skills</button>}>The playground needs at least one ready skill. Skills become ready after two more successful runs.</Empty></div>;
+  if (procedures && !ready.length) return <div className="card"><Empty icon="recall" title="Nothing to try yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'skills'})}>See skills</button>}>The playground needs at least one ready skill. A skill becomes ready after two more sessions pass their tests with it.</Empty></div>;
 
   const agent = providerOf(runs?.[0]?.agent_name);
   // Show skills by the request they were learned from, like the Skills page.
@@ -66,8 +66,8 @@ export function Playground() {
   return <section className="card chat">
     <div className="chat-log">
       {!turns.length && <div className="chat-intro">
-        <h2>Message your agent</h2>
-        <p>Send a task the way you would to your coding agent. You’ll see what MuscleMemory adds to the agent’s prompt before it starts.</p>
+        <h2>Preview what your agent gets</h2>
+        <p>Type a task the way you’d give it to your coding agent. You’ll see which of your skills it would get and the exact text MuscleMemory would add to its prompt. This is only a preview: nothing is sent to your agent.</p>
       </div>}
       {turns.map(t => <div className="turn" key={t.id}>
         <div className="bubble you"><span className="who">You</span><p>{t.task}</p></div>
@@ -99,20 +99,20 @@ export function Playground() {
 function Answer({task, result, onOpen, titles}: {task: string; result: RecallResult; onOpen: (id: string) => void; titles: Map<string, string>}) {
   const [exact, setExact] = useState(false);
   const match = result.candidates[0];
-  if (!match) return <p><strong>Nothing relevant, so I’m staying quiet.</strong> Your agent starts this task from scratch and gets no extra text.</p>;
+  if (!match) return <p><strong>No skill fits this task.</strong> Your agent would start from scratch and get no extra text.</p>;
   let pointer: Pointer = {};
   try {pointer = JSON.parse(result.guidance ?? '{}');} catch {/* show the summary only */}
   const total = match.successes + match.failures;
   return <div className="answer">
-    <p>Found a skill that worked <strong>{match.successes} of {total}</strong> times: <button type="button" className="link-button inline" onClick={() => onOpen(match.procedure_token)}>{shortTitle(titles.get(match.procedure_token) || match.definition.title)}</button></p>
-    <p className="muted">I’m adding this to your agent’s prompt:</p>
+    <p>Your agent would get a skill that worked <strong>{match.successes} of {total}</strong> times: <button type="button" className="link-button inline" onClick={() => onOpen(match.procedure_token)}>{shortTitle(titles.get(match.procedure_token) || match.definition.title)}</button></p>
+    <p className="muted">It would be added to your agent’s prompt like this:</p>
     <ul className="hand-off">
       {pointer.changed_files?.length ? <li><span>Files to change</span>{pointer.changed_files.join(', ')}</li> : null}
       {pointer.requires_files?.length ? <li><span>Read first</span>{pointer.requires_files.join(', ')}</li> : null}
       {pointer.verify?.length ? <li><span>Check it with</span><code>{pointer.verify.join(' && ')}</code></li> : null}
       {pointer.avoid?.length ? <li><span>Watch out</span>{[...new Set(pointer.avoid.map(plainNote))].join(' ')}</li> : null}
     </ul>
-    <button type="button" className="link-button" aria-expanded={exact} onClick={() => setExact(!exact)}>{exact ? 'Hide' : 'Show'} the exact prompt your agent gets</button>
+    <button type="button" className="link-button" aria-expanded={exact} onClick={() => setExact(!exact)}>{exact ? 'Hide' : 'Show'} the exact prompt your agent would get</button>
     {exact && <pre className="prompt-preview">{`${task}\n\n${result.guidance ?? ''}`}</pre>}
   </div>;
 }

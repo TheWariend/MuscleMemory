@@ -8,7 +8,7 @@ export type Route = {view: View; id?: string};
 export const views: Record<View, {label: string; icon: IconName; group: 'memory' | 'developer'; description: string}> = {
   home: {label: 'Home', icon: 'overview', group: 'memory', description: 'What your agents have learned, at a glance.'},
   skills: {label: 'Skills', icon: 'procedures', group: 'memory', description: 'What your agents learned from tasks that really worked.'},
-  playground: {label: 'Playground', icon: 'recall', group: 'memory', description: 'Message your agent and see what MuscleMemory adds to its prompt before it starts.'},
+  playground: {label: 'Playground', icon: 'recall', group: 'memory', description: 'Try a task and preview which skill your agent would get. Nothing is sent to your agent.'},
   activity: {label: 'Activity', icon: 'runs', group: 'memory', description: 'Agent sessions MuscleMemory recorded. Skills are learned from these.'},
   api: {label: 'API keys', icon: 'key', group: 'developer', description: 'Keys and addresses your agents and your own code use to reach MuscleMemory.'},
   settings: {label: 'Connect & settings', icon: 'connect', group: 'developer', description: 'Connect an agent and see this workspace.'},

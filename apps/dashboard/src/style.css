@@ -561,7 +561,7 @@ a {color: var(--link);}
 .card {background: transparent; border: 1px solid var(--line); border-radius: 12px;}
 .main-column {margin: 0; border: 0; border-radius: 0; background: var(--canvas);}
 .topbar {background: color-mix(in srgb, var(--canvas) 88%, transparent); border-radius: 0;}
-.shell {grid-template-columns: 264px minmax(0, 1fr);}
+@media (min-width: 861px) {.shell {grid-template-columns: 264px minmax(0, 1fr);}}
 .sidebar {background: var(--sidebar); border-right: 1px solid var(--line); padding: 18px 12px 12px;}
 .nav-group a {height: 40px; border-radius: 8px; font-size: 14px; font-weight: 400; color: var(--text-2);}
 .nav-group a .icon {width: 18px; height: 18px; color: var(--text-3);}
