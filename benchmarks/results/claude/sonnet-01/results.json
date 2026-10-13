@@ -1,0 +1,393 @@
+{
+  "protocol": {
+    "campaign": "sonnet-01",
+    "date": "2026-10-13",
+    "agent": "Claude Code 2.1.296, headless (`claude -p`)",
+    "model": "claude-sonnet-5-5",
+    "flags": "--output-format stream-json --permission-mode acceptEdits --setting-sources project,local --strict-mcp-config --no-session-persistence, a fixed tool allowlist",
+    "fixtures": "benchmarks/codex_fixtures.py (the same three repair tasks as the Codex runs); the fixture's AGENTS.md is also given to Claude as CLAUDE.md, identical in both arms",
+    "arms": "memory off: no hooks; MuscleMemory: hooks installed by `musclememory hooks install --client claude`",
+    "pairs": [
+      {
+        "pair": "p1",
+        "task": "configuration",
+        "variant": 31,
+        "prompt_index": 1,
+        "order": [
+          "musclememory",
+          "off"
+        ]
+      },
+      {
+        "pair": "p2",
+        "task": "configuration",
+        "variant": 32,
+        "prompt_index": 2,
+        "order": [
+          "off",
+          "musclememory"
+        ]
+      },
+      {
+        "pair": "p3",
+        "task": "pagination",
+        "variant": 33,
+        "prompt_index": 0,
+        "order": [
+          "musclememory",
+          "off"
+        ]
+      },
+      {
+        "pair": "p4",
+        "task": "exports",
+        "variant": 34,
+        "prompt_index": 1,
+        "order": [
+          "off",
+          "musclememory"
+        ]
+      }
+    ],
+    "memory": "A MuscleMemory server with three skills learned from verified Codex sessions (each learned from prompt 0 of its task, then passed two separate Codex checks, and kept). No skill was learned from Claude Code before scoring. Skills learned by Codex, used by Claude Code.",
+    "judge": "The independent verifier from codex_fixtures: 187 behaviour assertions plus the project's own tests and protected-file hashes, after every session.",
+    "changes_found_and_fixed": [
+      "Shell edits: Sonnet 5.5 changed code from Bash heredocs, which did not count as a code change; the hooks now compare which project files differ from git around each shell command.",
+      "Piped test runs (`tests | tail`): counted only when the output shows the runner's own summary line.",
+      "Sessions are identified by session id only; a `cd` inside a command had split one session in two.",
+      "File-change capabilities (patch, edit, write) are interchangeable when matching a skill to an agent and when counting a check.",
+      "A check no longer requires repeating read-only shell commands (cat, sed -n, grep, git diff)."
+    ],
+    "amendment": "Pairs p1-p3 ran before the last two fixes. Their measurements are unchanged, but their passing MuscleMemory sessions were first recorded as new skills instead of checks. Those three duplicates were deleted and the same three sessions were re-submitted to auto-learn after the fix; they then counted as checks on the Codex skills. Pair p4 ran with every fix in place and was recorded as a check automatically.",
+    "excluded_sessions": [
+      "Four exploratory sessions on an isolated server before the shell-edit fix (learned nothing; one memory-off).",
+      "One learning session after the shell-edit fix, used to find the remaining server issue.",
+      "One live session before the session-id fix, recorded as incomplete."
+    ],
+    "billing": "Claude Code reports cost (total_cost_usd); it is included."
+  },
+  "totals": {
+    "off": {
+      "sessions": 4,
+      "passed": 4,
+      "input_tokens": 459366,
+      "uncached_input_tokens": 37980,
+      "cache_read_input_tokens": 421386,
+      "output_tokens": 6708,
+      "tool_calls": 30,
+      "wall_seconds": 64.9,
+      "cost_usd": 0.261,
+      "skill_injected": 0
+    },
+    "musclememory": {
+      "sessions": 4,
+      "passed": 4,
+      "input_tokens": 259436,
+      "uncached_input_tokens": 35222,
+      "cache_read_input_tokens": 224214,
+      "output_tokens": 4973,
+      "tool_calls": 21,
+      "wall_seconds": 66.8,
+      "cost_usd": 0.213,
+      "skill_injected": 4
+    }
+  },
+  "results": [
+    {
+      "label": "p1-on",
+      "family": "configuration",
+      "variant": 31,
+      "prompt_index": 1,
+      "arm": "musclememory",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 18.6,
+      "duration_ms": 17451,
+      "num_turns": 6,
+      "is_error": false,
+      "cost_usd": 0.0569935,
+      "input_tokens": 80620,
+      "uncached_input_tokens": 9025,
+      "cache_read_input_tokens": 71595,
+      "output_tokens": 1375,
+      "tool_calls": 5,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "ttings.py` now merges nested dicts recursively. Changing only `service.port` keeps `service.host`.\n- **Precedence:** `load_config` in `parcelkit/configuration.py` now applies environment values before command-line values, so command-line flags win.\n- **Zero/false values:** command-line values are now dropped only when they are `None`, so `0` and `False` are kept.\n\nInvalid `PARCEL_ENABLED` values still raise `ValueError`, and no public signatures changed.\n\nI didn't add tests for the precedence or zero/false cases, since I was told not to change tests. The existing tests don't cover those cases.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [
+        {
+          "token": "9d39bc98-473f-47d8-b222-80624b8bfafe",
+          "session": "838fa1e05bfbc4f0648a9a23d58ebde8c0a2a6aff6557fbca281e09132804058",
+          "ended": 1,
+          "closed": 1,
+          "gaps": "[]",
+          "created": 1791849615.661806
+        }
+      ],
+      "injections": [
+        {
+          "identity": "bd268601a327cdbdfa3768b041119984bee3b036af77dd24585c5d07ea5dcf63",
+          "session": "838fa1e05bfbc4f0648a9a23d58ebde8c0a2a6aff6557fbca281e09132804058",
+          "procedure": "72249b45-ce5f-421d-a687-8368ccccfaa3",
+          "version": 1,
+          "context_hash": "f55bce7232d3546c975b5f1a220df77fe481b3523b8284145ad5bd67f97bc3dc",
+          "tokens": 324
+        }
+      ]
+    },
+    {
+      "label": "p1-off",
+      "family": "configuration",
+      "variant": 31,
+      "prompt_index": 1,
+      "arm": "off",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 17.0,
+      "duration_ms": 15685,
+      "num_turns": 9,
+      "is_error": false,
+      "cost_usd": 0.0660317,
+      "input_tokens": 117367,
+      "uncached_input_tokens": 9210,
+      "cache_read_input_tokens": 108157,
+      "output_tokens": 1840,
+      "tool_calls": 8,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": " tests pass.\n\n- **Flags vs. environment** (`parcelkit/configuration.py`): the order is now defaults, then file, then environment, then command-line flags, so flags win.\n- **Zero/false values** (`parcelkit/configuration.py`): only `None` flag values are skipped now, so `0` and `False` are kept.\n- **`service.port` dropping `service.host`** (`parcelkit/settings.py`): `merge` now merges nested dicts instead of replacing them.\n\nThe invalid-boolean check on `PARCEL_ENABLED` is unchanged and still raises `ValueError`. I didn't add tests for these cases, since the instructions say not to change tests.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [],
+      "injections": []
+    },
+    {
+      "label": "p2-off",
+      "family": "configuration",
+      "variant": 32,
+      "prompt_index": 2,
+      "arm": "off",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 17.5,
+      "duration_ms": 16322,
+      "num_turns": 10,
+      "is_error": false,
+      "cost_usd": 0.07310790000000002,
+      "input_tokens": 145101,
+      "uncached_input_tokens": 10522,
+      "cache_read_input_tokens": 134579,
+      "output_tokens": 1759,
+      "tool_calls": 9,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "iscover -s tests`).\n\n- **Priority:** `load_config` in `configuration.py` now applies defaults, then file values, then environment, then CLI, so CLI wins. Before, the environment overrode the CLI.\n- **Falsy values:** CLI values are now skipped only when they are `None`. Before, any falsy value was dropped, so `0` and `False` were lost.\n- **Nested overrides:** `merge` in `settings.py` now merges nested dicts recursively. Overriding `service.port` keeps `service.host`.\n\nThe tests don't cover these cases, and I didn't add any since you said not to change tests. I didn't run the CLI by hand either.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [],
+      "injections": []
+    },
+    {
+      "label": "p2-on",
+      "family": "configuration",
+      "variant": 32,
+      "prompt_index": 2,
+      "arm": "musclememory",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 16.4,
+      "duration_ms": 15173,
+      "num_turns": 6,
+      "is_error": false,
+      "cost_usd": 0.0517633,
+      "input_tokens": 59678,
+      "uncached_input_tokens": 8725,
+      "cache_read_input_tokens": 50953,
+      "output_tokens": 1178,
+      "tool_calls": 5,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "I fixed the config priority and merging. The 3 tests pass.\n\n- **`parcelkit/settings.py`:** `merge` now merges nested dicts recursively, so overriding `service.port` keeps `service.host`.\n- **`parcelkit/configuration.py`:** `load_config` now applies defaults, then files, then environment, then CLI, so CLI wins. It only drops CLI values that are `None`, so `0` and `False` are kept.\n\nI didn't look at `parcelkit/cli.py`. If the CLI passes `False` or `0` for options the user didn't set, those would now override lower layers.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [
+        {
+          "token": "0f4c8794-61dd-4b14-ab71-68a625c7a118",
+          "session": "0eb948ea23f7ef75e1e02d269fccecb7e36a2306c16829924940d87aaf2aaa61",
+          "ended": 1,
+          "closed": 1,
+          "gaps": "[]",
+          "created": 1791849676.8409631
+        }
+      ],
+      "injections": [
+        {
+          "identity": "bd268601a327cdbdfa3768b041119984bee3b036af77dd24585c5d07ea5dcf63",
+          "session": "0eb948ea23f7ef75e1e02d269fccecb7e36a2306c16829924940d87aaf2aaa61",
+          "procedure": "72249b45-ce5f-421d-a687-8368ccccfaa3",
+          "version": 1,
+          "context_hash": "f55bce7232d3546c975b5f1a220df77fe481b3523b8284145ad5bd67f97bc3dc",
+          "tokens": 324
+        }
+      ]
+    },
+    {
+      "label": "p3-on",
+      "family": "pagination",
+      "variant": 33,
+      "prompt_index": 0,
+      "arm": "musclememory",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 16.1,
+      "duration_ms": 14849,
+      "num_turns": 7,
+      "is_error": false,
+      "cost_usd": 0.0531331,
+      "input_tokens": 59741,
+      "uncached_input_tokens": 8890,
+      "cache_read_input_tokens": 50851,
+      "output_tokens": 1250,
+      "tool_calls": 6,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "Cursor pagination is fixed, and all 3 tests pass.\n\n- **Ordering:** `parcelkit/pagination.py` now sorts by `(created_at, id)`.\n- **Ties:** `parcelkit/cursors.py` now puts the row's `id` in the cursor instead of an empty string. Continuation therefore skips rows already returned, including ones with the same timestamp. The cursor is still the same base64 JSON pair.\n- **Limits:** a limit of zero or less now raises `ValueError`.\n\nI didn't touch the tests, and I didn't add a test for timestamp ties or for a zero limit.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [
+        {
+          "token": "38cb312c-7372-4ca4-85e7-bc1fc9de907e",
+          "session": "5e3edfe3d03bcd934817e9f783bfe535b4c8115b21cc968c6104694a7576f651",
+          "ended": 1,
+          "closed": 1,
+          "gaps": "[]",
+          "created": 1791849696.5139682
+        }
+      ],
+      "injections": [
+        {
+          "identity": "bd268601a327cdbdfa3768b041119984bee3b036af77dd24585c5d07ea5dcf63",
+          "session": "5e3edfe3d03bcd934817e9f783bfe535b4c8115b21cc968c6104694a7576f651",
+          "procedure": "ed78a9ac-b392-4878-a5eb-88e34c0fae91",
+          "version": 1,
+          "context_hash": "a6036e157687c422eba90b155a510e7c607504edb12ebac109bdd04127c6b30b",
+          "tokens": 274
+        }
+      ]
+    },
+    {
+      "label": "p3-off",
+      "family": "pagination",
+      "variant": 33,
+      "prompt_index": 0,
+      "arm": "off",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 15.5,
+      "duration_ms": 14076,
+      "num_turns": 8,
+      "is_error": false,
+      "cost_usd": 0.06332180000000001,
+      "input_tokens": 99318,
+      "uncached_input_tokens": 9400,
+      "cache_read_input_tokens": 89918,
+      "output_tokens": 1675,
+      "tool_calls": 7,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": " I didn't add a test for timestamp ties, since tests are off-limits.\n\n- **Stable order:** `parcelkit/pagination.py` now sorts by `(created_at, id)`. It used to sort by `created_at` alone.\n- **Ties:** `parcelkit/cursors.py` was writing an empty string where the row id belongs. The cursor now carries the row's `id`, so continuation skips rows already returned, including ones with the same timestamp. The format is still `[created_at, id]`.\n- **Limits:** a `limit` of zero or less now raises `ValueError`. Before, only negative limits did.\n\nThe `page` signature and the cursor encoding are unchanged.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [],
+      "injections": []
+    },
+    {
+      "label": "p4-off",
+      "family": "exports",
+      "variant": 34,
+      "prompt_index": 1,
+      "arm": "off",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 14.9,
+      "duration_ms": 13710,
+      "num_turns": 7,
+      "is_error": false,
+      "cost_usd": 0.0585852,
+      "input_tokens": 97580,
+      "uncached_input_tokens": 8848,
+      "cache_read_input_tokens": 88732,
+      "output_tokens": 1434,
+      "tool_calls": 6,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "seen. It was building that identity but never using it.\n- **Refunds:** refunds are now always subtracted, whatever sign the input amount has. Before, they were added.\n- **Half-cent amounts:** `cents` in `parcelkit/money.py` now uses `Decimal` with half-up rounding instead of `int(float * 100)`. So 1.005 becomes 101 cents instead of 100.\n\nA refund that reuses the `id` of an earlier row for the same account is also dropped as a duplicate, because the dedupe key doesn't include `kind`. I left that as it was. If refunds can share an `id` with their original sale, `kind` should be added to the key.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [],
+      "injections": []
+    },
+    {
+      "label": "p4-on",
+      "family": "exports",
+      "variant": 34,
+      "prompt_index": 1,
+      "arm": "musclememory",
+      "model": "claude-sonnet-5-5",
+      "returncode": 0,
+      "stderr": "",
+      "wall_seconds": 15.7,
+      "duration_ms": 14507,
+      "num_turns": 6,
+      "is_error": false,
+      "cost_usd": 0.051097500000000004,
+      "input_tokens": 59397,
+      "uncached_input_tokens": 8582,
+      "cache_read_input_tokens": 50815,
+      "output_tokens": 1170,
+      "tool_calls": 5,
+      "messages_with_parallel_tools": 0,
+      "permission_denials": 0,
+      "final_text": "I fixed all three problems, and the 3 tests pass.\n\n- **Retries:** `summarize` in `parcelkit/exports.py` now skips any row whose `(account, id)` pair it has already counted.\n- **Refund sign:** refunds are now subtracted from the total. Before, `abs(amount)` added them.\n- **Rounding:** `cents` in `parcelkit/money.py` now converts through `Decimal` and rounds half up. The old float math truncated amounts ending in .005.\n\nA hook message suggested similar edits. I read the current files first and wrote the changes myself.",
+      "passed": true,
+      "behavioral_checks": 187,
+      "protected_files_unchanged": true,
+      "hook_runs": [
+        {
+          "token": "f97fb49d-2598-4996-9764-31664098417e",
+          "session": "4980afa81643fd4ba820d16774ab743a4405fd5837179577f22b58823b18b098",
+          "ended": 1,
+          "closed": 1,
+          "gaps": "[]",
+          "created": 1791850047.718397
+        }
+      ],
+      "injections": [
+        {
+          "identity": "bd268601a327cdbdfa3768b041119984bee3b036af77dd24585c5d07ea5dcf63",
+          "session": "4980afa81643fd4ba820d16774ab743a4405fd5837179577f22b58823b18b098",
+          "procedure": "01b4e294-198b-4da9-bcfc-98cd62050af9",
+          "version": 1,
+          "context_hash": "a9ca4feb381af900d00a2103fbb980ec624dd729ebf5a39693d8c357e338f94c",
+          "tokens": 251
+        }
+      ]
+    }
+  ]
+}
