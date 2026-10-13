@@ -23,20 +23,18 @@ export CLEANSLATE_MUSCLEMEMORY_NODE_MODULE=/path/to/musclememory/packages/sdk-ty
 Build the SDK first if `dist/node.js` is missing (`npm run build --workspace
 @thewariend/musclememory`).
 
-## Desktop build
+## Desktop app and CLI
 
-The desktop source wraps the `run`, `plan`, `approvePlan` and `resumePendingQuestion`
-streams ([desktop.patch](desktop.patch)) and loads the SDK only when these variables
-are set. Installed apps must be rebuilt from that source first. Journals live in
-CleanSlate's user-data `musclememory-private` folder.
+Both wrap the `run`, `plan`, `approvePlan` and `resumePendingQuestion` streams and load
+the SDK only when these variables are set:
 
-## Cloud worker
+- Desktop: [desktop.patch](desktop.patch). Installed apps must be rebuilt from that
+  source first. Journals live in CleanSlate's user-data `musclememory-private` folder.
+- CLI (one-shot and interactive): [cli.patch](cli.patch). Journals live in
+  `~/.cleanslate/musclememory-private` (or `CLEANSLATE_MUSCLEMEMORY_STATE`). The note is
+  added after the CLI's own project context.
 
-The TheWariend development worker uses one key per user from
-[worker.credentials.example.json](worker.credentials.example.json), set with
-`CLEANSLATE_MUSCLEMEMORY_CREDENTIALS_FILE`, `CLEANSLATE_MUSCLEMEMORY_STATE_ROOT`,
-`CLEANSLATE_MUSCLEMEMORY_MODULE` and `CLEANSLATE_MUSCLEMEMORY_NODE_MODULE`. Remote
-endpoints must use HTTPS.
+Both pass the project folder, so code changed from the terminal is seen.
 
 ## What is captured
 
@@ -50,9 +48,18 @@ To check it works, run a task and look at the dashboard's **Activity** page.
 
 ## Learning and limits
 
-- Sessions are captured and receive memory but are **not learned automatically**:
-  the host has no "tests passed" check yet. A host verifier or a person must call
-  `capture.finish(true)` first. See [capture.example.mjs](capture.example.mjs).
+- Sessions are **learned automatically** with the same rule as the hooks: a test
+  passed after the last code change. Edits through `apply_edit`, `write_file` and the
+  other file tools count, and so do terminal commands that changed project files (the
+  host compares `git status` before and after each `execute_command`, paths only). A
+  test piped into another command counts only when its output shows the runner's own
+  pass or fail line. A passing session becomes a check on the skill it was handed, or
+  a new skill that waits for your OK.
+- Pass the project folder as the host's fourth argument (`workspaceRoot`); without
+  it, only the file tools count as changes. Paths inside it are stored relative to it.
+- The CleanSlate CLI and desktop app wire this up when `CLEANSLATE_MUSCLEMEMORY_CONFIG`
+  is set. Custom hosts can call `capture.finishIfVerified(hint)` themselves, or
+  `capture.finish(true)` after their own check. See [capture.example.mjs](capture.example.mjs).
 - Spawned workers, background commands, and unmapped, overlapping or unfinished
   tools mark a session incomplete.
 - Keep the key and journals outside agent workspaces and command sandboxes.

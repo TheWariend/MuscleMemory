@@ -1,0 +1,275 @@
+diff --git a/packages/cleanslate-cli/src/cli.ts b/packages/cleanslate-cli/src/cli.ts
+index 978fac4c..b2229265 100755
+--- a/packages/cleanslate-cli/src/cli.ts
++++ b/packages/cleanslate-cli/src/cli.ts
+@@ -23,6 +23,7 @@ import { CleanSlateModelSetupTui, CleanSlateSetupTui, ICliSetupResult } from './
+ import { clearInteractiveScreen, enterInteractiveScreen, suppressEngineLogs } from './terminalScreen.js';
+ import { CleanSlateTui } from './tui.js';
+ import { CliProjectContext } from './projectContext.js';
++import { CliProceduralMemory, withMemory } from './proceduralMemory.js';
+ import { cliDoctorReport } from './doctor.js';
+ import { CliPermissionPolicy } from './permissions.js';
+ import { formatManagedUsage } from './usage.js';
+@@ -574,7 +575,9 @@ async function runOneShot(
+ 	};
+ 	process.on('SIGINT', onSigint);
+ 
+-	const runtime = new CleanSlateNodeAgentRuntime({
++	const memory = new CliProceduralMemory(path.resolve(args.cwd),
++		() => process.stderr.write('MuscleMemory is unavailable or queued an upload; the agent continues.\n'));
++	const runtime = memory.attach(new CleanSlateNodeAgentRuntime({
+ 		rootPath: path.resolve(args.cwd),
+ 		workspaceStorageHome: getCleanSlateWorkspaceStorageHome(),
+ 		sessionId: session.id,
+@@ -599,7 +602,7 @@ async function runOneShot(
+ 			azureEmbeddingApiVersion: args.azureEmbeddingApiVersion,
+ 			azureEmbeddingDeploymentName: args.azureEmbeddingDeploymentName
+ 		}),
+-		additionalContext: task => new CliProjectContext(args.cwd).build(task),
++		additionalContext: task => withMemory(new CliProjectContext(args.cwd).build(task), memory, task),
+ 		resolveAttachments: task => new CliProjectContext(args.cwd).imageAttachments(task).map(attachment => ({
+ 			type: 'image_url',
+ 			image_url: { url: attachment.dataUrl }
+@@ -614,7 +617,7 @@ async function runOneShot(
+ 				process.stderr.write(event.chunk);
+ 			}
+ 		}
+-	});
++	}));
+ 	runtime.restoreSessionSnapshot(session.runtimeSnapshot);
+ 
+ 	const state = { wroteText: false };
+diff --git a/packages/cleanslate-cli/src/tui.tsx b/packages/cleanslate-cli/src/tui.tsx
+index 74f93fcb..02eae01e 100644
+--- a/packages/cleanslate-cli/src/tui.tsx
++++ b/packages/cleanslate-cli/src/tui.tsx
+@@ -3,6 +3,7 @@
+  * Licensed under the MIT License. See License.txt in the project root for license information.
+  *--------------------------------------------------------------------------------------------*/
+ 
++import * as path from 'node:path';
+ import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import { Box, Static, Text, useApp, useInput, useStdout } from 'ink';
+ import {
+@@ -18,6 +19,7 @@ import { CleanSlateStreamReveal, REVEAL_TICK_MS } from '@cleanslate/sdk/agent/cl
+ import { sanitizeToolResultForRenderer } from '@cleanslate/sdk/agent/cleanSlateToolResultPromptSerializer.js';
+ import { getCleanSlateContextDefaults, resolveCleanSlateReasoningLevelOptions } from '@cleanslate/sdk/protocol/cleanSlateModelCapabilities.js';
+ import { CliProjectContext } from './projectContext.js';
++import { CliProceduralMemory, withMemory } from './proceduralMemory.js';
+ import {
+ 	CliWorkspaceReview,
+ 	cliTurnDiffReviews,
+@@ -1467,6 +1469,7 @@ export function CleanSlateTui({ args, store, initialSession, initialTask, onConf
+ 	const [transcriptEpoch, setTranscriptEpoch] = useState(0);
+ 	const initialTaskStarted = useRef(false);
+ 	const projectContext = useMemo(() => new CliProjectContext(args.cwd), [args.cwd]);
++	const proceduralMemory = useMemo(() => new CliProceduralMemory(path.resolve(args.cwd)), [args.cwd]);
+ 	const workspaceReview = useMemo(() => new CliWorkspaceReview(args.cwd), [args.cwd]);
+ 	const commandQuery = input.match(/^\/(\S*)$/)?.[1]?.toLowerCase();
+ 	const commandPaletteFilter = useMemo(
+@@ -1578,7 +1581,7 @@ export function CleanSlateTui({ args, store, initialSession, initialTask, onConf
+ 		approvalQueue.cancel();
+ 		runtimeRef.current?.dispose();
+ 		const permissionPolicy = new CliPermissionPolicy(activePermissionMode);
+-		const runtime = new CleanSlateNodeAgentRuntime({
++		const runtime = proceduralMemory.attach(new CleanSlateNodeAgentRuntime({
+ 			rootPath: args.cwd,
+ 			workspaceStorageHome: getCleanSlateWorkspaceStorageHome(),
+ 			browserHeadless: false,
+@@ -1608,7 +1611,7 @@ export function CleanSlateTui({ args, store, initialSession, initialTask, onConf
+ 				args.apiKey = token;
+ 				onCredentialChange?.('cleanslate', token);
+ 			},
+-			additionalContext: task => projectContext.build(task),
++			additionalContext: task => withMemory(projectContext.build(task), proceduralMemory, task),
+ 			onAgentEvent: event => {
+ 				if (event.type === 'child_agent') {
+ 					setWorkers(previous => updateWorkers(previous, { type: event.eventType, agent: event.agent, streamPart: event.streamPart, delta: event.delta }));
+@@ -1668,7 +1671,7 @@ export function CleanSlateTui({ args, store, initialSession, initialTask, onConf
+ 					});
+ 				}
+ 			}
+-		});
++		}));
+ 		runtime.restoreSessionSnapshot(targetSession.runtimeSnapshot);
+ 		runtimeRef.current = runtime;
+ 		return runtime;
+diff --git a/packages/cleanslate-cli/src/proceduralMemory.ts b/packages/cleanslate-cli/src/proceduralMemory.ts
+new file mode 100644
+index 00000000..71652059
+--- /dev/null
++++ b/packages/cleanslate-cli/src/proceduralMemory.ts
+@@ -0,0 +1,85 @@
++/*---------------------------------------------------------------------------------------------
++ * Copyright (c) CleanSlate. All rights reserved.
++ * Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import * as path from 'node:path';
++import { pathToFileURL } from 'node:url';
++import { getCleanSlateHome } from './config.js';
++
++interface HostObserver {
++	context(task?: string): Promise<string>;
++	attach<T extends object>(runtime: T): T;
++}
++
++type HostMemoryModule = {
++	CleanSlateHostMemory: new (config: string, state: string, report: () => void, workspaceRoot?: string) => HostObserver;
++};
++
++const ENTRY_POINTS = new Set(['run', 'plan', 'approvePlan', 'resumePendingQuestion']);
++
++/**
++ * Optional MuscleMemory procedural memory for the CLI. Off unless
++ * CLEANSLATE_MUSCLEMEMORY_CONFIG names a private host config (from
++ * `musclememory connect cleanslate`). No credentials enter the model's context, and
++ * memory failures never stop the agent.
++ */
++export class CliProceduralMemory {
++	private observer: HostObserver | undefined;
++	private loading: Promise<void> | undefined;
++	private readonly configFile = process.env.CLEANSLATE_MUSCLEMEMORY_CONFIG;
++
++	constructor(private readonly workspaceRoot: string, private readonly report: () => void = () => { }) { }
++
++	get enabled(): boolean {
++		return Boolean(this.configFile);
++	}
++
++	/** The short note MuscleMemory hands over for this task, or ''. */
++	context(task: string): Promise<string> {
++		return this.observer?.context(task).catch(() => '') ?? Promise.resolve('');
++	}
++
++	private load(): Promise<void> {
++		return this.loading ??= (async () => {
++			if (!this.configFile) {
++				return;
++			}
++			const moduleName = process.env.CLEANSLATE_MUSCLEMEMORY_NODE_MODULE ?? '@thewariend/musclememory/node';
++			const sdk = await import(path.isAbsolute(moduleName) ? pathToFileURL(moduleName).href : moduleName) as HostMemoryModule;
++			const state = process.env.CLEANSLATE_MUSCLEMEMORY_STATE ?? path.join(getCleanSlateHome(), 'musclememory-private');
++			this.observer = new sdk.CleanSlateHostMemory(this.configFile, state, this.report, this.workspaceRoot);
++		})().catch(() => { this.report(); });
++	}
++
++	/** Observe each run; every other runtime method is passed through unchanged. */
++	attach<T extends object>(runtime: T): T {
++		if (!this.configFile) {
++			return runtime;
++		}
++		const memory = this;
++		return new Proxy(runtime, {
++			get(target, property) {
++				const value = Reflect.get(target, property, target);
++				if (typeof value !== 'function') {
++					return value;
++				}
++				if (!ENTRY_POINTS.has(String(property))) {
++					return value.bind(target);
++				}
++				return async function* (...args: unknown[]): AsyncGenerator<unknown> {
++					await memory.load();
++					const observed = memory.observer?.attach(target) ?? target;
++					const method = Reflect.get(observed, property) as (...input: unknown[]) => AsyncIterable<unknown>;
++					yield* Reflect.apply(method, observed, args);
++				};
++			}
++		});
++	}
++}
++
++/** Project context and MuscleMemory's note, together. */
++export async function withMemory(projectContext: string, memory: CliProceduralMemory, task: string): Promise<string> {
++	const note = await memory.context(task);
++	return [projectContext, note].filter(Boolean).join('\n\n');
++}
+diff --git a/packages/cleanslate-cli/src/test/proceduralMemory.test.ts b/packages/cleanslate-cli/src/test/proceduralMemory.test.ts
+new file mode 100644
+index 00000000..37b5a2c8
+--- /dev/null
++++ b/packages/cleanslate-cli/src/test/proceduralMemory.test.ts
+@@ -0,0 +1,82 @@
++/*---------------------------------------------------------------------------------------------
++ * Copyright (c) CleanSlate. All rights reserved.
++ * Licensed under the MIT License. See License.txt in the project root for license information.
++ *--------------------------------------------------------------------------------------------*/
++
++import assert from 'node:assert/strict';
++import * as fs from 'node:fs';
++import * as http from 'node:http';
++import * as os from 'node:os';
++import * as path from 'node:path';
++import { test } from 'node:test';
++import { CliProceduralMemory, withMemory } from '../proceduralMemory.js';
++
++const SDK = process.env.MUSCLEMEMORY_SDK_NODE_MODULE;
++
++function withEnvironment(values: Record<string, string | undefined>, body: () => Promise<void>): Promise<void> {
++	const previous = Object.fromEntries(Object.keys(values).map(key => [key, process.env[key]]));
++	for (const [key, value] of Object.entries(values)) {
++		if (value === undefined) { delete process.env[key]; } else { process.env[key] = value; }
++	}
++	return body().finally(() => {
++		for (const [key, value] of Object.entries(previous)) {
++			if (value === undefined) { delete process.env[key]; } else { process.env[key] = value; }
++		}
++	});
++}
++
++test('memory is off unless a MuscleMemory config is set', () => withEnvironment({ CLEANSLATE_MUSCLEMEMORY_CONFIG: undefined }, async () => {
++	const memory = new CliProceduralMemory(process.cwd());
++	const runtime = { run() { return 'native'; } };
++	assert.equal(memory.enabled, false);
++	assert.equal(memory.attach(runtime), runtime);
++	assert.equal(await withMemory('project notes', memory, 'task'), 'project notes');
++}));
++
++test('a configured run gets the note and is recorded, with the stream unchanged', { skip: !SDK && 'set MUSCLEMEMORY_SDK_NODE_MODULE to the MuscleMemory SDK dist/node.js' }, async t => {
++	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-memory-'));
++	t.after(() => fs.rmSync(root, { recursive: true, force: true }));
++	const observed: string[] = [];
++	const server = http.createServer(async (request, response) => {
++		let body = '';
++		for await (const chunk of request) { body += chunk; }
++		observed.push(request.url ?? '');
++		response.setHeader('Content-Type', 'application/json');
++		if (request.url === '/v1/recall') {
++			response.end(JSON.stringify({ candidates: [], guidance: JSON.stringify({ notice: 'Untrusted prior result; check current files.', procedure: 'p1', version: 1 }) }));
++			return;
++		}
++		const input = JSON.parse(body || '{}');
++		response.end(JSON.stringify({ accepted_event_count: input.event_batch?.length ?? 0, duplicate_event_count: 0, rejected_event_count: 0 }));
++	});
++	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
++	t.after(() => server.close());
++	const address = server.address() as { port: number };
++	const config = path.join(root, 'musclememory.json');
++	fs.writeFileSync(config, JSON.stringify({ url: `http://127.0.0.1:${address.port}`, api_key: 'k', namespace: 'team' }), { mode: 0o600 });
++	await withEnvironment({
++		CLEANSLATE_MUSCLEMEMORY_CONFIG: config,
++		CLEANSLATE_MUSCLEMEMORY_NODE_MODULE: SDK,
++		CLEANSLATE_MUSCLEMEMORY_STATE: path.join(root, 'state'),
++	}, async () => {
++		const memory = new CliProceduralMemory(root);
++		let note = '';
++		const parts = [
++			{ type: 'tool_start', toolName: 'read_file', toolCallId: 'a', input: { path: path.join(root, 'README.md') } },
++			{ type: 'tool_result', toolName: 'read_file', toolCallId: 'a', result: { content: 'readme' } },
++		];
++		const runtime = memory.attach({
++			marker: 'native',
++			async *run(task: string) {
++				note = await withMemory('project notes', memory, task);
++				yield* parts;
++			},
++		});
++		assert.equal(runtime.marker, 'native');
++		const seen: unknown[] = [];
++		for await (const part of runtime.run('Read the readme')) { seen.push(part); }
++		assert.deepEqual(seen, parts);
++		assert.match(note, /^project notes\n\n\{"notice":"Untrusted/);
++		assert.ok(observed.includes('/v1/observe'));
++	});
++});

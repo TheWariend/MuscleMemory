@@ -2,6 +2,7 @@ import {ObservedRun, CaptureError, type CaptureCheckpoint} from './observer.js';
 import type {MuscleMemoryClient} from './index.js';
 import type {RuntimeProfile} from './contracts.js';
 import {redact, safeCapture} from './redaction.js';
+import {WORKSPACE_CHANGES, pipedTest, testVerdict, verifiedSuccess} from './verification.js';
 
 /** Structurally compatible with @cleanslate/sdk's public stream; no vendor dependency. */
 export interface CleanSlatePart {
@@ -18,11 +19,22 @@ export interface CleanSlateCaptureOptions {
   checkpoint?: CaptureCheckpoint;
   /** Capture failures are reported without changing the agent's own tool results. */
   onCaptureError?: (error: unknown) => void;
+  /** The project folder: paths inside it are stored relative to it. */
+  workspaceRoot?: string;
+  /**
+   * The state of project files that differ from version control (path -> fingerprint).
+   * Taken around each terminal command to see code changed from the shell.
+   */
+  workspaceState?: () => Record<string, string> | undefined;
 }
+
+const PATH_KEYS = ['path', 'file_path', 'filePath', 'target', 'cwd'];
+const TERMINAL = new Set(['execute_command']);
 
 export class CleanSlateCapture {
   readonly run: ObservedRun;
-  private active = new Map<string, {name: string; input: Record<string, unknown>; started: number}>();
+  private active = new Map<string, {name: string; input: Record<string, unknown>; started: number;
+    before?: Record<string, string>}>();
   private bindings = new Map<string, string>();
   private gaps = new Set<string>();
   private ended = false;
@@ -71,9 +83,10 @@ export class CleanSlateCapture {
       if (this.active.size && !this.active.has(id)) this.gaps.add('parallel_dependencies_unknown');
       if (this.active.has(id)) { this.gaps.add('duplicate_tool_start'); return; }
       const input = safeCapture(part.input);
-      this.active.set(id, {name: part.toolName, input:
+      this.active.set(id, {name: part.toolName, input: this.relative(
         input !== null && typeof input === 'object' && !Array.isArray(input) ?
-          input as Record<string, unknown> : {input}, started: performance.now()});
+          input as Record<string, unknown> : {input}), started: performance.now(),
+        before: TERMINAL.has(part.toolName) ? this.state() : undefined});
       return;
     }
     const start = this.active.get(id);
@@ -84,11 +97,28 @@ export class CleanSlateCapture {
     const result = safeCapture(part.result);
     const object = result !== null && typeof result === 'object' && !Array.isArray(result) ?
       result as Record<string, unknown> : {};
-    const failed = object.success === false || object.isError === true ||
+    let failed = object.success === false || object.isError === true ||
       (typeof object.exitCode === 'number' && object.exitCode !== 0) ||
       (typeof object.exit_code === 'number' && object.exit_code !== 0);
-    this.run.record_tool(capability, start.input, redact(result), failed ? 'failure' : 'success',
-      Math.max(0, performance.now() - start.started), this.options.effects?.[part.toolName] ?? 'destructive');
+    let verified = true;
+    const input = {...start.input};
+    if (TERMINAL.has(part.toolName)) {
+      const after = start.before ? this.state() : undefined;
+      if (start.before && after) {
+        const changed = [...new Set([...Object.keys(start.before), ...Object.keys(after)])]
+          .filter(file => start.before![file] !== after[file]).sort().slice(0, 64);
+        if (changed.length) input[WORKSPACE_CHANGES] = changed;
+      }
+      if (!failed && pipedTest(input.command)) {
+        const verdict = testVerdict([object.stdout, object.stderr, object.output]
+          .filter(text => typeof text === 'string').join('\n'));
+        if (verdict === false) failed = true;
+        else if (verdict === undefined) verified = false;
+      }
+    }
+    this.run.record_tool(capability, input, redact(result), failed ? 'failure' : 'success',
+      Math.max(0, performance.now() - start.started), this.options.effects?.[part.toolName] ?? 'destructive',
+      verified);
   }
 
   /** Preserve the exact original stream parts and their order, including exceptions. */
@@ -114,6 +144,36 @@ export class CleanSlateCapture {
         try { this.options.onCaptureError?.(error); } catch { /* Preserve stream exceptions. */ }
       }
     }
+  }
+
+  private state(): Record<string, string> | undefined {
+    try { return this.options.workspaceState?.(); } catch { return undefined; }
+  }
+
+  /** Absolute paths inside the project, written relative to it. */
+  private relative(input: Record<string, unknown>): Record<string, unknown> {
+    const root = this.options.workspaceRoot?.replace(/\/+$/, '');
+    if (!root) return input;
+    const result = {...input};
+    for (const key of PATH_KEYS) {
+      const value = result[key];
+      if (typeof value !== 'string') continue;
+      if (value === root) result[key] = '.';
+      else if (value.startsWith(root + '/')) result[key] = value.slice(root.length + 1);
+    }
+    if (typeof result.command === 'string') result.command = result.command.split(root + '/').join('');
+    return result;
+  }
+
+  /**
+   * When a test passed after the last code change, close the session as a success and
+   * let MuscleMemory learn from it (or count it as a check). Returns null otherwise.
+   */
+  async finishIfVerified(hint?: string): Promise<Record<string, unknown> | null> {
+    if (!this.ended || this.gaps.size || this.active.size) return null;
+    if (!verifiedSuccess(this.run.events)) return null;
+    await this.run.complete(true);
+    return this.client.auto_learn(this.run.run_token, hint);
   }
 
   /** Call only after an owned verifier/human checks the actual task outcome. */

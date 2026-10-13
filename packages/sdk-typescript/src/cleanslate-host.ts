@@ -1,7 +1,9 @@
 /** Optional local host lifecycle adapter. Credentials stay outside agent context. */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {createHash, randomUUID} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import {statSync} from 'node:fs';
 import {MuscleMemoryClient} from './index.js';
 import {CleanSlateCapture, type CleanSlatePart} from './cleanslate.js';
 import {CLEANSLATE_DEFAULT_PROFILE, CLEANSLATE_DEFAULT_EFFECTS} from './cleanslate-defaults.js';
@@ -20,9 +22,32 @@ export class CleanSlateHostMemory {
   private active: CleanSlateCapture | undefined;
   private recalled: Promise<string> | undefined;
   private delivered = new Set<string>();
+  private handedOver: string | undefined;
 
   constructor(private configFile: string, private stateRoot: string,
-              private report: () => void = () => {}) {}
+              private report: () => void = () => {}, private workspaceRoot?: string) {}
+
+  /** Files that differ from git, by size and modification time. Never reads contents. */
+  private workspaceState(): Record<string, string> | undefined {
+    const root = this.workspaceRoot;
+    if (!root) return undefined;
+    const listed = execFileSync('git', ['-C', root, 'status', '--porcelain=v1', '-z', '--untracked-files=all'],
+      {encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'], env: {...process.env, GIT_OPTIONAL_LOCKS: '0'}});
+    const state: Record<string, string> = {};
+    const entries = listed.split('\0');
+    for (let index = 0; index < entries.length; index++) {
+      const entry = entries[index];
+      if (entry.length < 4) continue;
+      const code = entry.slice(0, 2), file = entry.slice(3);
+      if (code[0] === 'R' || code[0] === 'C') index++;
+      if (/(^|\/)(node_modules|\.git|__pycache__|\.venv|dist|build)\//.test(file) || /\.(pyc|log)$/.test(file)) continue;
+      try {
+        const info = statSync(path.join(root, file));
+        state[file] = createHash('sha1').update(`${info.size}:${info.mtimeMs}`).digest('hex').slice(0, 16);
+      } catch { state[file] = 'missing'; }
+    }
+    return state;
+  }
 
   private config(): Promise<HostConfiguration | undefined> {
     return this.configuration ??= (async () => {
@@ -48,6 +73,7 @@ export class CleanSlateHostMemory {
       const identity = `${pointer.procedure}:${pointer.version}`;
       if (this.delivered.has(identity)) return '';
       this.delivered.add(identity);
+      this.handedOver = typeof pointer.procedure === 'string' ? pointer.procedure : undefined;
       return result.guidance;
     }).catch(() => '');
   }
@@ -62,15 +88,19 @@ export class CleanSlateHostMemory {
           captureIdentity(config.url, config.api_key));
         capture = new CleanSlateCapture(client, intent,
           config.profile ?? {...CLEANSLATE_DEFAULT_PROFILE, permissions: []}, config.namespace,
-          {effects: config.effects ?? CLEANSLATE_DEFAULT_EFFECTS, checkpoint: journal.save, onCaptureError: () => this.warn()});
+          {effects: config.effects ?? CLEANSLATE_DEFAULT_EFFECTS, checkpoint: journal.save, onCaptureError: () => this.warn(),
+            workspaceRoot: this.workspaceRoot, workspaceState: () => this.workspaceState()});
         this.active = capture;
         this.recalled = undefined;
+        this.handedOver = undefined;
       }
     } catch { this.warn(); }
     try { yield* capture ? capture.capture(source) : source; }
     finally {
       if (capture) {
         try { await capture.run.flush(); } catch { this.warn(); }
+        // Tests passed after the last change: learn from it, or count it as a check.
+        try { await capture.finishIfVerified(this.handedOver); } catch { this.warn(); }
         if (this.active === capture) { this.active = undefined; this.recalled = undefined; }
       }
     }

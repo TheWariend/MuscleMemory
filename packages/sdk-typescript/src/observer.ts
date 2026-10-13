@@ -128,7 +128,7 @@ export class ObservedRun {
   /** Capture a result supplied by an owned client stream; never executes the tool. */
   record_tool(capability: string, arguments_: Record<string, unknown>, response: unknown,
               status: 'success' | 'failure', durationMs = 0,
-              effect: 'read' | 'write' | 'destructive' = 'read'): void {
+              effect: 'read' | 'write' | 'destructive' = 'read', outcomeVerified = true): void {
     this.ensureOpen();
     const name = this.profile.bindings?.[capability];
     if (!token(name) || !['success', 'failure'].includes(status) ||
@@ -137,7 +137,7 @@ export class ObservedRun {
     this.emit({kind: 'tool', tool_name: name, capability,
       arguments: safeCapture(arguments_) as ExecutionEvent['arguments'],
       response: safeCapture(response) as ExecutionEvent['response'], status,
-      duration_ms: durationMs, effect});
+      duration_ms: durationMs, effect, ...(outcomeVerified ? {} : {outcome_verified: false})});
   }
 
   private ensureOpen(completion = false): void {

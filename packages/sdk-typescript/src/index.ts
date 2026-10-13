@@ -37,6 +37,12 @@ export class MuscleMemoryClient {
   musclememory_recall(input: RecallInput) { return this.post('/v1/recall', input); }
   musclememory_evaluate(input: EvaluateInput) { return this.post('/v1/evaluate', input); }
   musclememory_inspect(input: InspectInput) { return this.post('/v1/inspect', input); }
+  /** After a verified success: count it as a check on a matching skill, or learn a new one. */
+  auto_learn(runToken: string, hint?: string) {
+    if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(runToken)) throw new Error('Invalid run token');
+    const query = hint && /^[a-zA-Z0-9_.:-]{1,128}$/.test(hint) ? `?hint=${encodeURIComponent(hint)}` : '';
+    return this.post(`/v1/runs/${runToken}/auto-learn${query}`, {});
+  }
   record_session_usage(runToken: string, input: SessionUsageInput) {
     if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(runToken)) throw new Error('Invalid run token');
     return this.post(`/v1/runs/${runToken}/usage`, input);

@@ -1,6 +1,8 @@
+diff --git a/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateMainService.ts b/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateMainService.ts
+index d55723d5..c822946f 100644
 --- a/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateMainService.ts
 +++ b/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateMainService.ts
-@@ -63,6 +63,7 @@
+@@ -63,6 +63,7 @@ import { IConfigurationService } from '../../../../../platform/configuration/com
  import { ILogService } from '../../../../../platform/log/common/log.js';
  import { getResolvedShellEnv } from '../../../../../platform/shell/node/shellEnv.js';
  import { CleanSlateThreadPersistenceStore } from './cleanSlateThreadPersistenceStore.js';
@@ -8,21 +10,22 @@
  import { CleanSlateWebRetrievalService } from './cleanSlateWebRetrievalService.js';
  import { CleanSlateLocalEmbeddingService } from './cleanSlateLocalEmbeddingService.js';
  import { CleanSlateProviderSchemaNormalizer } from '@cleanslate/sdk/node/cleanSlateProviderSchemaNormalizer.js';
-@@ -200,7 +201,12 @@
+@@ -200,7 +201,13 @@ export class NodeCleanSlateMainService extends Disposable implements ICleanSlate
              }
              fs.mkdirSync(storageHome, { recursive: true });
              if (!root) { fs.mkdirSync(rootPath, { recursive: true }); }
 -            return new CleanSlateNodeAgentRuntime({
 +            const memory = new CleanSlateProceduralMemory(
 +                path.join(this.environmentService.userDataPath, 'musclememory-private'),
-+                () => this.logService.warn('MuscleMemory unavailable or upload queued; native agent continues.')
++                () => this.logService.warn('MuscleMemory unavailable or upload queued; native agent continues.'),
++                rootPath
 +            );
 +            const runtime = new CleanSlateNodeAgentRuntime({
 +                additionalContext: task => memory.context(task),
                  rootPath, workspaceStorageHome: storageHome, sessionId: request.session.id,
                  mainService: this, configuration: { ...request.configuration },
                  managedTokenCoordinator: this.managedTokens,
-@@ -228,6 +234,7 @@
+@@ -228,6 +235,7 @@ export class NodeCleanSlateMainService extends Disposable implements ICleanSlate
                  }),
                  resolveAttachments: () => hooks.getImages().map(url => ({ type: 'image_url' as const, image_url: { url } }))
              });
@@ -30,9 +33,12 @@
          }, update => {
              this._onDidPublishThreadSession.fire(update);
              void this.persistPublishedThreadSession(update.session);
+diff --git a/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateProceduralMemory.ts b/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateProceduralMemory.ts
+new file mode 100644
+index 00000000..26edc0b4
 --- /dev/null
 +++ b/vscode-fork/src/vs/workbench/services/cleanSlate/node/core/cleanSlateProceduralMemory.ts
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,55 @@
 +/*---------------------------------------------------------------------------------------------
 + * Copyright (c) CleanSlate. All rights reserved.
 + * Licensed under the MIT License. See License.txt in the project root for license information.
@@ -54,7 +60,8 @@
 +    private loading: Promise<void> | undefined;
 +    private readonly configFile = process.env.CLEANSLATE_MUSCLEMEMORY_CONFIG;
 +
-+    constructor(private readonly stateRoot: string, private readonly report: () => void) { }
++    /** `workspaceRoot` lets MuscleMemory see code changed from the terminal (via git status). */
++    constructor(private readonly stateRoot: string, private readonly report: () => void, private readonly workspaceRoot?: string) { }
 +
 +    context(task: string): Promise<string> {
 +        return this.observer?.context(task) ?? Promise.resolve('');
@@ -65,9 +72,9 @@
 +            if (!this.configFile) { return; }
 +            const moduleName = process.env.CLEANSLATE_MUSCLEMEMORY_NODE_MODULE ?? '@thewariend/musclememory/node';
 +            const sdk = await import(path.isAbsolute(moduleName) ? pathToFileURL(moduleName).href : moduleName) as {
-+                CleanSlateHostMemory: new (config: string, state: string, report: () => void) => HostObserver;
++                CleanSlateHostMemory: new (config: string, state: string, report: () => void, workspaceRoot?: string) => HostObserver;
 +            };
-+            this.observer = new sdk.CleanSlateHostMemory(this.configFile, this.stateRoot, this.report);
++            this.observer = new sdk.CleanSlateHostMemory(this.configFile, this.stateRoot, this.report, this.workspaceRoot);
 +        })().catch(() => { this.report(); });
 +    }
 +
