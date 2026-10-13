@@ -1,6 +1,7 @@
 from dataclasses import replace
 
 from conftest import PROFILE, evaluate, learned
+from musclememory.api import dashboard_dir
 
 
 def test_rest_learning_workflow(http):
@@ -93,6 +94,15 @@ def test_auth_validation_and_error_privacy(http):
     )
     assert http.get("/health").json()["status"] == "ok"
     assert "/v1/observe" in http.get("/openapi.json").json()["paths"]
+    # The CSP blocks Swagger's CDN scripts, so the reference lives on the website.
+    docs = http.get("/docs", follow_redirects=False)
+    assert docs.status_code == 307
+    assert docs.headers["location"] == "https://thewariend.com/musclememory/api"
+    assert http.get("/redoc").status_code == 404
+    if dashboard_dir().is_dir():  # CI runs these tests without building the dashboard
+        for address in ("/", "/dashboard"):
+            opened = http.get(address, follow_redirects=False)
+            assert opened.status_code == 307 and opened.headers["location"] == "/dashboard/"
 
 
 def test_keys_and_rate_limit(http, service, credential):

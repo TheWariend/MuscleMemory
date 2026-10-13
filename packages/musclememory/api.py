@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 import anyio
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from mcp.server.transport_security import TransportSecuritySettings
@@ -31,6 +31,15 @@ from .mcp_server import build_mcp
 from .service import MemoryService, conflict_error
 
 SkillAgent = Literal["codex", "claude"]
+
+
+API_REFERENCE = "https://thewariend.com/musclememory/api"
+
+
+def dashboard_dir():
+    """The built dashboard: the source checkout's build, else the copy in the wheel."""
+    built = Path(__file__).resolve().parents[2] / "apps/dashboard/dist"
+    return built if built.is_dir() else Path(__file__).with_name("static")
 
 
 class SecurityBoundary:
@@ -147,8 +156,17 @@ def create_app(service=None):
         version="0.1.0",
         lifespan=lifespan,
         description="Your AI agents learn by doing. REST contract v1.",
+        # The API reference lives on the website; the strict CSP here would block
+        # Swagger's CDN scripts. /openapi.json stays available locally.
+        docs_url=None,
+        redoc_url=None,
     )
     app.state.memory = service
+
+    @app.get("/docs", include_in_schema=False)
+    def docs():
+        return RedirectResponse(API_REFERENCE)
+
     app.add_middleware(SecurityBoundary, service=service)
 
     @app.exception_handler(DomainError)
@@ -334,10 +352,14 @@ def create_app(service=None):
     def revoke(key_id: Token, visibility_scope: Token, actor=auth):
         return service.revoke_key(actor, key_id, visibility_scope)
 
-    dashboard = Path(__file__).resolve().parents[2] / "apps/dashboard/dist"
-    if not dashboard.is_dir():
-        dashboard = Path(__file__).with_name("static")
+    dashboard = dashboard_dir()
     if dashboard.is_dir():
+        # The server's own address and /dashboard without a slash both lead to the dashboard.
+        @app.get("/", include_in_schema=False)
+        @app.get("/dashboard", include_in_schema=False)
+        def open_dashboard():
+            return RedirectResponse("/dashboard/")
+
         app.mount("/dashboard", StaticFiles(directory=dashboard, html=True))
     app.mount("/", mcp_app)
     default_openapi = app.openapi

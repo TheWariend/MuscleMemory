@@ -87,7 +87,7 @@ export function Api() {
       <dl className="kv wide pad">
         <div><dt>REST API</dt><dd><code>{origin}/v1</code></dd></div>
         <div><dt>MCP (for agents)</dt><dd><code>{origin}/mcp</code></dd></div>
-        <div><dt>API reference</dt><dd><a href="/docs" target="_blank" rel="noreferrer">Open the interactive docs</a></dd></div>
+        <div><dt>API reference</dt><dd><a href="https://thewariend.com/musclememory/api" target="_blank" rel="noreferrer">Open the API reference</a></dd></div>
         <div><dt>How to send the key</dt><dd><code>Authorization: Bearer &lt;your API key&gt;</code></dd></div>
       </dl>
     </section>

@@ -118,7 +118,7 @@ function Shell({client, session, onSignOut}: {client: Client; session: Session; 
           </div>)}
         </nav>
         <div className="sidebar-foot">
-          <a className="maker" href="https://thewariend.com" target="_blank" rel="noreferrer" title="TheWariend"><img src="/dashboard/brand/thewariend-mark.png" alt="TheWariend" width="18" height="18"/><span>Open source · Apache-2.0</span></a>
+          <a className="maker" href="https://thewariend.com/musclememory" target="_blank" rel="noreferrer" title="MuscleMemory on thewariend.com"><img src="/dashboard/brand/thewariend-mark.png" alt="TheWariend" width="18" height="18"/><span>Open source · Apache-2.0</span></a>
           <button type="button" className="icon-button" onClick={onSignOut} aria-label="Sign out" title="Sign out"><Icon name="logout"/></button>
         </div>
       </aside>
