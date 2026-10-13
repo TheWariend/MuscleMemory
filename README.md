@@ -48,6 +48,13 @@ musclememory dashboard                 # opens the dashboard, already signed in
 ```
 
 Then use your agent as usual. There are no keys or config files to copy.
+
+Or let your agent set it up: paste this into Claude Code, Codex or Cursor.
+
+```text
+Read https://thewariend.com/musclememory/llms.txt and set up MuscleMemory for this project.
+```
+
 More in [Install](https://github.com/TheWariend/MuscleMemory/blob/main/docs/install.md).
 
 ## How it works

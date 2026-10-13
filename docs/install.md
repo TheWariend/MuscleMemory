@@ -1,16 +1,19 @@
 # Install and run MuscleMemory
 
-MuscleMemory needs Python 3.12 or newer. Building the dashboard from source also
-needs Node 20.19+ or 22.12+.
+MuscleMemory needs Python 3.12 or newer.
 
 ## Quick start
 
-Install from a source checkout (a PyPI package will follow the first release):
+Install from PyPI. The package is `thewariend-musclememory`; the command is `musclememory`.
 
 ```sh
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e .
-npm ci && npm run build        # builds the dashboard
+pipx install thewariend-musclememory   # or: uv tool install / pip install thewariend-musclememory
+```
+
+Or let your coding agent do it: paste this into Claude Code, Codex or Cursor.
+
+```text
+Read https://thewariend.com/musclememory/llms.txt and set up MuscleMemory for this project.
 ```
 
 Then set it up and connect an agent:
@@ -42,6 +45,19 @@ Everything private lives in `~/.musclememory`. Set `MM_HOME` to use another fold
 | `hooks/<agent>.json` | Hook settings for that agent, plus its private capture queue |
 | `cleanslate.json` | CleanSlate host config, when connected |
 | `server.log`, `server.pid` | Background server output and process ID |
+
+## From source
+
+Building the dashboard needs Node 20.19+ or 22.12+.
+
+```sh
+git clone https://github.com/TheWariend/MuscleMemory.git && cd MuscleMemory
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+npm ci && npm run build        # builds the dashboard
+```
+
+Then run the same `init`, `start` and `connect` steps as above.
 
 ## Connecting agents
 
@@ -137,7 +153,7 @@ also read `MM_API_URL` and `MM_NAMESPACE`.
 ```sh
 musclememory stop
 cp ~/.musclememory/memory.db ~/memory-backup.db    # or sqlite3 memory.db ".backup …"
-pip install -e .                                    # new code
+pipx upgrade thewariend-musclememory                # or, from a clone: pip install -e .
 musclememory migrate                                # with MM_DATABASE_URL if not local
 musclememory start
 ```
