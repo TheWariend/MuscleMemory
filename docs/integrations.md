@@ -91,6 +91,24 @@ deleting it in the dashboard stops it reaching agents right away.
 Set `"auto_learn": false` in `~/.musclememory/hooks/<agent>.json` to capture
 without learning, or `"recall_enabled": false` to capture without injecting memory.
 
+## Export skills to your agents
+
+Codex and Claude Code read the same skill format: a folder with a `SKILL.md` in
+`~/.codex/skills` or `~/.claude/skills`. A Ready MuscleMemory skill can be written
+there, so the agent can use it even without MuscleMemory connected.
+
+```sh
+musclememory export SKILL_ID --to codex
+```
+
+The dashboard has **Add to Codex** / **Add to Claude Code** on every Ready skill.
+
+- Exported skills are named `musclememory-…` and contain the original request, the
+  files to look at, the exact edits, the test command and the watch-out notes.
+- Exporting never replaces a different skill with the same name in an agent's folder.
+- Exporting needs an admin key and works only on a local installation. `CODEX_HOME`
+  and `CLAUDE_CONFIG_DIR` are honoured.
+
 ## MCP
 
 MCP gives an agent five memory tools: `musclememory_recall`, `musclememory_observe`,

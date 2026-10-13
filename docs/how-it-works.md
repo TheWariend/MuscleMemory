@@ -26,10 +26,15 @@ flowchart LR
    its arguments, its result and its exit status. Secrets are redacted before
    anything is stored.
 2. **Verify.** When a session stops, the hook checks one thing: did a test
-   command pass after the last code change? If any tool call is missing from
-   the capture, or no test ran after the last edit, the session teaches nothing.
-3. **Learn or check.** A passing session that touched the same files as a skill
-   still being checked counts as one independent check for that skill.
+   command pass after the last code change? Edits through the edit tools count,
+   and so does any shell command that changed project files (the hook compares
+   which files differ from version control before and after it). If any tool
+   call is missing from the capture, or no test ran after the last change, the
+   session teaches nothing.
+3. **Learn or check.** A passing session that changed the same files as a skill
+   counts as one independent check for that skill, whichever agent ran it and
+   whichever tool made the change. The original agent's read-only commands
+   (`cat`, `sed -n`, `grep`, `git diff`) need not be repeated.
    Otherwise MuscleMemory compiles a new skill from it. The session a skill was
    learned from can never count as one of its checks.
 4. **Approve.** Skills learned automatically wait for a person's OK. In the
@@ -38,7 +43,10 @@ flowchart LR
 5. **Ready.** A skill is handed to agents only when it is kept, has at least two
    passing checks, has a smoothed reliability of at least 0.65, has been
    validated in the last 90 days, and needs only tools and permissions the
-   agent actually has.
+   agent actually has. Changing a file is one ability whatever the tool is
+   called (Codex's patch, Claude Code's Edit and Write, Cursor's Write), so a
+   skill learned with one agent is handed to the others; every other tool must
+   match exactly.
 6. **Recall.** At the start of a session (Cursor: at its first tool result) the
    hook asks for the best match and adds one compact pointer to the agent's
    prompt. A session gets the same skill at most once and at most two pointers in
@@ -57,10 +65,12 @@ flowchart LR
 - **Evidence**: the source session, every check with its measurements, and the
   revision history.
 
-The pointer sent to an agent is capped at 350 tokens by default. It contains the
-title, changed files, the test command, files to read first, preconditions, one
-watch-out note and a notice that the agent must check the current files and keep
-its normal approvals. The full skill is available through `musclememory_inspect`.
+The pointer sent to an agent is compact JSON, capped at 350 tokens by default. It
+contains the title, changed files, the test command, up to four before-and-after
+snippets of the key edits, files to read first, preconditions, one watch-out note,
+the permissions needed and a notice that the agent must check the current files and
+keep its normal approvals. When it is too long, whole optional fields and then edit
+snippets are dropped; code is never cut mid-string. The full skill is available through `musclememory_inspect`.
 
 ## Learning from failures
 

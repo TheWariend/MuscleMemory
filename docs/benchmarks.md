@@ -25,6 +25,28 @@ Full method, per-task numbers, the one rule change made during the run, and limi
   rate (every memory-off session also passed).
 - Token use varies between runs, so each task ran three times and the spread is published.
 
+## Claude Code with MuscleMemory (sonnet-01, early)
+
+Eight real Claude Code sessions with Sonnet 5.5: four pairs on the same three repair tasks,
+memory off against MuscleMemory, identical files and prompt per pair. The skills Claude Code
+received were learned and checked by **Codex** earlier, so this also shows memory moving
+between agents.
+
+| | Memory off | MuscleMemory | Change |
+|---|---:|---:|---:|
+| Input tokens | 459,366 | 259,436 | **−43.5%** |
+| Tool calls | 30 | 21 | **−30.0%** |
+| Output tokens | 6,708 | 4,973 | −25.9% |
+| Wall time | 64.9 s | 66.8 s | +2.9% |
+| Cost | $0.261 | $0.213 | −18.4% |
+| Tasks passed | 4 / 4 | 4 / 4 | same |
+
+Every pair used fewer input tokens (−31% to −59%). Time did not improve on these short
+sessions. It is a small run, one session per arm, so treat it as an early signal. Running it
+also found five gaps in the Claude Code integration, fixed before scoring; the report lists
+them with the one amendment:
+[benchmarks/results/claude/sonnet-01/report.md](../benchmarks/results/claude/sonnet-01/report.md).
+
 ## Speed as memory grows
 
 Recall time on a laptop (Apple Silicon, SQLite), measured with `benchmarks/scale.py`:

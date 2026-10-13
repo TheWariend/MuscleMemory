@@ -22,8 +22,12 @@ time a similar task comes up, it hands the agent a short note: the files to chan
 test that proves it worked, and what to avoid.
 
 In a benchmark with real Codex sessions, it cut **input tokens by 25.5%, tool calls by 30.4%
-and time by 28.2%**, with every task still passing.
-[Method and raw data](benchmarks/results/codex/luna-03/report.md).
+and time by 28.2%**, with every task still passing. In an early run with Claude Code and
+Sonnet 5.5, using skills that Codex had learned, it cut **input tokens by 43.5% and tool
+calls by 30%**.
+[Codex method and data](benchmarks/results/codex/luna-03/report.md) ·
+[Claude Code run](benchmarks/results/claude/sonnet-01/report.md) ·
+[Whitepaper](docs/whitepaper.md).
 
 <p align="center">
   <img src="docs/images/dashboard-playground.png" alt="The MuscleMemory playground: a task, the skill it matched, and what gets added to the agent's prompt" width="860">
@@ -65,6 +69,9 @@ flowchart LR
   MuscleMemory never replays actions.
 - **Quiet when it should be.** If nothing fits, nothing is added, and the agent pays no
   extra tokens.
+- **Shared between agents.** A skill learned with Codex is handed to Claude Code or
+  Cursor too: changing a file counts the same whichever tool did it.
+  Proven skills can also be exported to Codex or Claude Code as `SKILL.md`.
 - **Local and open.** SQLite and a small on-device model by default: no account and no
   outside calls. Use PostgreSQL with pgvector for teams.
 
@@ -94,6 +101,7 @@ See [Integrations](docs/integrations.md).
 
 ## Docs
 
+- [Whitepaper](docs/whitepaper.md): the design, trust rules, retrieval and evaluation in one paper
 - [Install and run](docs/install.md): local setup, Docker and PostgreSQL, configuration
 - [How it works](docs/how-it-works.md): the learning loop, retrieval, storage and security
 - [Integrations](docs/integrations.md): each agent, MCP and the SDKs
@@ -103,9 +111,9 @@ See [Integrations](docs/integrations.md).
 
 ## Status
 
-MuscleMemory works and is tested: 97 Python tests and 21 TypeScript tests, on SQLite and
-PostgreSQL. It's early. The benchmark covers repeat tasks on three controlled codebases,
-not every kind of work. CleanSlate and the SDKs don't learn on their own yet; the hooks do.
+MuscleMemory works and is tested: 126 Python tests on SQLite and PostgreSQL, and 21
+TypeScript tests. It's early. The benchmarks cover repeat tasks on three controlled codebases,
+not every kind of work, and the Claude Code run is small. CleanSlate and the SDKs don't learn on their own yet; the hooks do.
 See the [roadmap](docs/roadmap.md).
 
 Issues and pull requests are welcome. Please report security issues privately, as

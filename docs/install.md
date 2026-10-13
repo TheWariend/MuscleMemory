@@ -23,7 +23,8 @@ musclememory connect codex      # or claude, cursor, cleanslate
 musclememory dashboard          # opens the dashboard, already signed in
 ```
 
-Restart the agent after `connect`. Other commands:
+Restart the agent after `connect`. To add a Ready skill to Codex or Claude Code as a
+`SKILL.md`, see [Export skills to your agents](integrations.md#export-skills-to-your-agents). Other commands:
 
 ```sh
 musclememory status             # running or stopped, and which agents are connected

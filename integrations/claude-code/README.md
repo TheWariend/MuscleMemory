@@ -33,7 +33,15 @@ Give Claude Code a task, then:
 - Read, Write, Edit, Grep, Glob and Bash calls are recorded, including failures.
 - Every prompt starts a new recording, because Claude Code has no turn id.
 - Memory is added at the prompt, at most twice per session.
-- On `Stop`, a session with a passing test after its last Write or Edit is verified
+- Bash commands that change project files count as code changes too: the hook
+  compares which files differ from git before and after each one. A test piped into
+  another command (`… | tail`) counts only when its output shows the runner's own
+  pass or fail line.
+- Paths inside the project are stored relative to it, and a leading
+  `cd <project> &&` is dropped, so skills match other checkouts.
+- Skills learned with Codex or Cursor are handed to Claude Code too, and Claude
+  Code's passing sessions count as their checks.
+- On `Stop`, a session with a passing test after its last code change is verified
   and learned from. Otherwise it stays unverified. You can still confirm one by hand:
   `musclememory hooks attest --client claude --config ~/.musclememory/hooks/claude.json
   --run RUN_TOKEN --succeeded`.

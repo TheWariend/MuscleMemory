@@ -6,6 +6,10 @@
   Python and TypeScript SDKs.
 - Automatic learning from sessions whose tests pass after the last code change.
   Hooks only: CleanSlate and SDK sessions are recorded but don't learn by themselves yet.
+- Code changes made from the shell (scripts, heredocs, `sed -i`) are seen by comparing
+  which project files differ from git around each command.
+- Skills move between agents: one learned with Codex is handed to Claude Code and
+  counted as checked by Claude Code's passing sessions.
 - Two independent passing checks before a skill is trusted, a pause after a failed check,
   and a person's OK before any automatically learned skill reaches an agent.
 - Failure contrasts that turn failed attempts into plain "watch out" and "if it goes
@@ -14,7 +18,9 @@
   what to avoid.
 - Local by default: SQLite and a small on-device model, no account and no outside calls.
   PostgreSQL with pgvector for teams.
-- A dashboard with skills, a playground, activity and API keys.
+- A dashboard with skills (in plain words: files to look at, the exact edits, the test,
+  and which agents checked it), a playground, activity and API keys.
+- Exporting proven skills to Codex or Claude Code as `SKILL.md`.
 
 ## Next
 
@@ -28,7 +34,9 @@
    a few hundred real sessions first.
 4. **Automatic learning for CleanSlate and the SDKs**, matching the hooks.
 5. **Disconnect command** and per-project opt-out.
-6. **Scale results** for 100k stored skills on SQLite and PostgreSQL.
+6. **A larger Claude Code benchmark**, with repeats and skills learned by Claude Code
+   itself, to follow the early sonnet-01 run.
+7. **Scale results** for 100k stored skills on SQLite and PostgreSQL.
 
 ## Later
 
@@ -39,7 +47,10 @@
 
 - Sessions with parallel tool calls, or a missing "tool finished" event, are kept
   but not learned from.
-- Only file-edit tools count as a code change. Edits made through shell commands
-  don't, so tests after them won't verify a session.
+- A shell command counts as a code change when it changes files that differ from
+  version control (or, outside git, any file in the project). Changes that leave the
+  same state as before, or that are committed inside the same command, are not seen.
+- A piped test run (`tests | tail`) counts only when the output shows the test
+  runner's own pass or fail line.
 - A skill is a suggestion. Agents still read the current files and ask for approval
   as usual. MuscleMemory never replays actions.

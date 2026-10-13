@@ -32,7 +32,9 @@ independent siblings represent parallel branches.
 Applicability lists use enforceable strings: `capability:repository.inspect`,
 `permission:workspace.read`, `environment:os`. Environment conditions test key
 presence; `environment_requirements` test declared values exactly. Unsupported
-conditions are never assumed true, so the skill is skipped. Avoidance and recovery
+conditions are never assumed true, so the skill is skipped. The file-change
+capabilities `filesystem.patch`, `filesystem.edit` and `filesystem.write` satisfy one
+another; every other capability must be bound exactly. Avoidance and recovery
 notes are plain-English guidance, not executable conditions or permission grants.
 
 Recall returns `vector_mode` (`semantic` for the local or remote embedding model,
