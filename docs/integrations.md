@@ -150,7 +150,7 @@ finally:
 TypeScript (`examples/typescript_capture.mjs`):
 
 ```typescript
-import {MuscleMemoryClient, ObservedRun} from '@thewariend/musclememory';
+import {MuscleMemoryClient, ObservedRun} from 'musclememory';
 
 const run = new ObservedRun(client, 'Inspect repository manifest', {
   agent_name: 'my-agent', bindings: {'repository.inspect': 'read_file'},
@@ -173,7 +173,7 @@ and calls `musclememory_learn`, then `musclememory_evaluate` for later runs.
   omitted arguments are never learned.
 - **Durable queues.** Hooks keep events in a private SQLite queue per agent. The
   Python SDK can write a private journal (`spool_path`), and Node can use
-  `NodeCaptureJournal` from `@thewariend/musclememory/node`. Journals are bound to
+  `NodeCaptureJournal` from `musclememory/node`. Journals are bound to
   one server and key; recovery resends saved events and **never repeats tool
   actions**.
 - **Cleanup.** `musclememory hooks purge --client <agent> --config <hooks file>

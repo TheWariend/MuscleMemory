@@ -18,7 +18,7 @@ jobs:
         with: {python-version: '3.12'}
       - uses: actions/setup-node@v4
         with: {node-version: '24', cache: npm}
-      - run: npm ci && npm run build --workspace @thewariend/musclememory
+      - run: npm ci && npm run build --workspace musclememory
       - run: pip install -r requirements.lock && pip install --no-deps --no-build-isolation -e .
       - run: pytest -q
         env:
