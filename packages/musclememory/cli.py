@@ -52,6 +52,9 @@ def main():
     connect.add_argument("--project", default=".")
     dash = sub.add_parser("dashboard", help="Open the dashboard, already signed in")
     dash.add_argument("--no-browser", action="store_true", help="Print the sign-in link instead")
+    export = sub.add_parser("export", help="Add a Ready skill to Codex or Claude Code as SKILL.md")
+    export.add_argument("skill", help="The skill id (procedure token)")
+    export.add_argument("--to", dest="target", choices=["codex", "claude"], required=True)
     sub.add_parser("migrate", help="Apply explicit database migrations")
     key = sub.add_parser("key", help="Create an API key; plaintext is shown once")
     key.add_argument("--tenant", help="Defaults to your local setup")
@@ -70,6 +73,11 @@ def main():
     reindex.add_argument("--namespace", required=True)
     sub.add_parser("doctor", help="Check database and configured retrieval provider")
     arguments = parser.parse_args()
+    if arguments.command == "export":
+        from . import local
+
+        local.export(arguments.skill, arguments.target)
+        return
     if arguments.command in {"init", "start", "stop", "status", "connect", "dashboard"}:
         from . import local
 

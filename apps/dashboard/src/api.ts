@@ -35,7 +35,14 @@ export type ProcedureDetail = {
   validation_history: Array<{run_token: string; outcome: {succeeded?: boolean}; metrics: {observed?: Measurements; baseline?: Measurements | null}}>;
   contrasts: Array<{contrast_id: string; failed_run_token: string; successful_run_token: string; capability_signature: string[]; step_diff: unknown}>;
   successes: number; failures: number; confidence: number; stale: boolean;
+  summary?: SkillSummary;
 };
+export type SkillSummary = {
+  reads: string[]; changes: string[]; edits: Array<{file: string; before?: string; after?: string}>;
+  test: string | null; look_around_steps: number; learned_by: string | null; checked_by: Record<string, number>;
+};
+export type SkillAgent = 'codex' | 'claude';
+export type ExportResult = {agent: SkillAgent; name: string; installed: boolean; unchanged: boolean};
 export type RunEvent = {
   event_id: string; sequence: number; kind: 'intent' | 'tool' | 'completion'; intent_text: string | null;
   tool_name: string | null; capability: string | null; arguments: Record<string, unknown>; response: unknown;
@@ -92,6 +99,7 @@ export function createClient(key: string) {
     retire: (id: string) => call<{lifecycle_status: string}>('POST', `/v1/procedures/${token(id)}/retire`),
     deleteProcedure: (id: string) => call<{deleted: boolean}>('DELETE', `/v1/procedures/${token(id)}`),
     deleteRun: (id: string) => call<{deleted: boolean}>('DELETE', `/v1/runs/${token(id)}`),
+    exportSkill: (id: string, agent: SkillAgent) => call<ExportResult>('POST', `/v1/procedures/${token(id)}/export?agent=${agent}`),
     revokeKey: (id: string, scope: string) => call<unknown>('DELETE', `/v1/keys/${token(id)}?${scoped(scope)}`),
   };
 }

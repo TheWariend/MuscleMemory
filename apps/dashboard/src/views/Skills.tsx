@@ -1,7 +1,8 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import type {ProcedureDetail, ProcedureSummary} from '../api';
-import {checksLine, describeStep, plainNote, requestDetails, shortCommand, shortTitle, skillStatus} from '../plain';
+import type {ProcedureDetail, ProcedureSummary, SkillSummary} from '../api';
+import {agentName, checksLine, describeStep, plainNote, requestDetails, shortCommand, shortTitle, skillStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
+import {ProviderLogo} from '../logos';
 import {useWorkspace} from '../workspace';
 
 type Filter = 'all' | 'review' | 'active' | 'provisional' | 'flagged' | 'retired';
@@ -94,6 +95,16 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     catch (e) {toast((e as Error).message, 'bad');}
     finally {setBusy(false);}
   }
+  async function exportTo(agent: 'codex' | 'claude') {
+    if (!detail) return;
+    setBusy(true);
+    try {
+      const result = await client.exportSkill(detail.procedure_token, agent);
+      toast(result.unchanged ? `${agentName(agent)} already has this skill.` : `Added to ${agentName(agent)} as ${result.name}. Restart it to pick it up.`);
+    }
+    catch (e) {toast((e as Error).message, 'bad');}
+    finally {setBusy(false);}
+  }
   async function remove() {
     if (!detail || !await confirm({title: 'Delete this skill?', confirm: 'Delete', danger: true, body: <p>“{detail.definition.title}” and its history will be removed. This can’t be undone.</p>})) return;
     setBusy(true);
@@ -120,12 +131,16 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
       <div className="sheet-body" key={tab}>
         {tab === 'steps' && <div className="stack-sm">
           {(asked || d.title) !== shortTitle(asked || d.title) && <p className="intent-line">Learned from your request: “{asked || d.title}”</p>}
-          <ol className="timeline">{d.steps.map((s, i) => <li className="timeline-item" key={s.step_token}>
-            <span className="timeline-dot">{i + 1}</span>
-            <div className="timeline-body"><p className="event-text">{describeStep(s.capability, s.arguments, s.effect, s.source_tool)}</p></div>
-          </li>)}</ol>
+          {detail.summary && <Summary summary={detail.summary} successes={detail.successes}/>}
           {(d.avoidance_rules?.length ?? 0) > 0 && <Notes title="Watch out" icon="alert" items={d.avoidance_rules!}/>}
           {(d.recovery_notes?.length ?? 0) > 0 && <Notes title="If it goes wrong" icon="refresh" items={d.recovery_notes!}/>}
+          <details className="all-steps" open={!detail.summary}>
+            <summary>All {d.steps.length} recorded steps</summary>
+            <ol className="timeline">{d.steps.map((s, i) => <li className="timeline-item" key={s.step_token}>
+              <span className="timeline-dot">{i + 1}</span>
+              <div className="timeline-body"><p className="event-text">{describeStep(s.capability, s.arguments, s.effect, s.source_tool)}</p></div>
+            </li>)}</ol>
+          </details>
           <p className="notice"><Icon name="shield" size={14}/>Agents get this as a suggestion. They still check the current files and follow your normal approvals.</p>
         </div>}
         {tab === 'proof' && <Proof detail={detail}/>}
@@ -133,6 +148,11 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
       </div>
       {(can('write') || can('delete')) && <div className="sheet-foot">
         {can('write') && detail.needs_review && <button type="button" className="primary-button" disabled={busy} onClick={() => void keep()}><Icon name="check" size={14}/>Keep</button>}
+        {can('admin') && detail.lifecycle_status === 'active' && !detail.needs_review && (['codex', 'claude'] as const).map(agent =>
+          <button key={agent} type="button" className="secondary-button" disabled={busy} onClick={() => void exportTo(agent)}
+            title={`Write this proven skill into ${agentName(agent)}’s skills folder as SKILL.md`}>
+            <ProviderLogo provider={agent} size={13}/>Add to {agentName(agent)}
+          </button>)}
         {can('write') && detail.lifecycle_status !== 'retired' && !detail.needs_review && <button type="button" className="secondary-button" disabled={busy} onClick={() => void turnOff()}><Icon name="archive" size={14}/>Turn off</button>}
         {can('delete') && <button type="button" className="danger-ghost" disabled={busy} onClick={() => void remove()}><Icon name="trash" size={14}/>Delete</button>}
       </div>}
@@ -163,6 +183,43 @@ function Proof({detail}: {detail: ProcedureDetail}) {
       </button>;
     })}</div>}
     {detail.contrasts.length > 0 && <p className="muted">Learned from {detail.contrasts.length} failed {detail.contrasts.length === 1 ? 'attempt' : 'attempts'} too. See “Watch out” for what to avoid.</p>}
+  </div>;
+}
+
+const fileName = (path: string) => path.split('/').slice(-2).join('/');
+
+/** The skill in plain words: where to look, what changed (the real lines), how it was proved. */
+function Summary({summary, successes}: {summary: SkillSummary; successes: number}) {
+  const checks = Object.entries(summary.checked_by).filter(([, n]) => n > 0);
+  return <div className="summary">
+    {summary.reads.length > 0 && <section className="summary-part">
+      <h3>Looks at first</h3>
+      <p className="file-list">{summary.reads.map(f => <code key={f} title={f}>{fileName(f)}</code>)}</p>
+      {summary.look_around_steps > 0 && <p className="look-note">Plus {summary.look_around_steps} look-around {summary.look_around_steps === 1 ? 'step' : 'steps'} (listing and reading files), not needed to repeat.</p>}
+    </section>}
+    {summary.changes.length > 0 && <section className="summary-part">
+      <h3>Changes</h3>
+      {summary.edits.length > 0
+        ? summary.edits.map((e, i) => <div className="diff" key={`${e.file}-${i}`}>
+          <p className="diff-file">{e.file}</p>
+          {e.before && <pre className="diff-del">{e.before.split('\n').map(l => `- ${l}`).join('\n')}</pre>}
+          {e.after && <pre className="diff-add">{e.after.split('\n').map(l => `+ ${l}`).join('\n')}</pre>}
+        </div>)
+        : <p className="file-list">{summary.changes.map(f => <code key={f} title={f}>{fileName(f)}</code>)}</p>}
+    </section>}
+    {summary.test && <section className="summary-part">
+      <h3>Checks with</h3>
+      <p><code className="test-command">{summary.test}</code></p>
+    </section>}
+    <section className="summary-part">
+      <h3>Proven by</h3>
+      <p className="proven">
+        {summary.learned_by && <>Learned by <strong>{agentName(summary.learned_by)}</strong>. </>}
+        {checks.length > 0
+          ? <>Passed {successes} {successes === 1 ? 'check' : 'checks'}: {checks.map(([name, n], i) => <span key={name}>{i > 0 && ', '}<strong>{agentName(name)}</strong> {n}×</span>)}.</>
+          : <>No separate check yet.</>}
+      </p>
+    </section>
   </div>;
 }
 

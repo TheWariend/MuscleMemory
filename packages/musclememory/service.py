@@ -2,14 +2,16 @@
 
 import hashlib
 import json
+import tempfile
 import time
 from datetime import timedelta
+from pathlib import Path
 
 from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
-from .artifacts import search_document, semantic_document
+from .artifacts import operation_categories, search_document, semantic_document
 from .boundaries import derive_boundaries, refine_boundaries
 from .compiler import compile_trace
 from .config import Settings
@@ -934,6 +936,7 @@ class MemoryService:
                     }
                     for item in contrasts
                 ],
+                "summary": self._summary(session, principal, revision, evaluations),
                 "successes": revision.successes,
                 "failures": revision.failures,
                 "confidence": reliability(revision),
@@ -941,6 +944,78 @@ class MemoryService:
                 >= self.settings.stale_days,
                 "contract_version": "1",
             }
+
+    def _summary(self, session, principal, revision, evaluations):
+        """What a person needs to read a skill: files, edits, the test and who proved it."""
+        from .artifacts import extract_experience, inspection_only, test_command
+
+        experience = extract_experience(revision.definition["steps"])
+        changed = set(experience["writes"])
+        tests = [
+            test_command(step["arguments"].get("command"))
+            for step in revision.definition["steps"]
+            if "verify" in operation_categories(step["arguments"], step["capability"])
+        ]
+
+        def agent(run_token):
+            run = session.get(Run, (principal.tenant, run_token))
+            return (run.runtime or {}).get("agent_name") if run else None
+
+        checked = {}
+        for evaluation in evaluations:
+            if (evaluation.outcome or {}).get("succeeded"):
+                name = agent(evaluation.run_token) or "unknown"
+                checked[name] = checked.get(name, 0) + 1
+        source = session.get(
+            Run, (principal.tenant, revision.definition["provenance"].get("source_run", ""))
+        )
+        return {
+            "request": source.intent if source else None,
+            "reads": [path for path in experience["reads"] if path not in changed][:12],
+            "changes": experience["writes"][:12],
+            "edits": experience["edits"][:6],
+            "test": next((test for test in reversed(tests) if test), None),
+            "look_around_steps": sum(
+                inspection_only(step["arguments"], step["capability"])
+                for step in revision.definition["steps"]
+            ),
+            "learned_by": agent(revision.definition["provenance"].get("source_run", "")),
+            "checked_by": checked,
+        }
+
+    def export_skill(self, principal, token, agent):
+        """Write a proven, kept skill into an agent's skills folder as SKILL.md."""
+        from . import skill_export
+
+        detail = self.inspect(principal, InspectInput(procedure_token=token))
+        namespace = detail["visibility_scope"]
+        principal.require(namespace, "admin")
+        if self.settings.deployment_mode != "local":
+            raise DomainError(
+                "local_only", "Exporting skills works only on a local installation", 403
+            )
+        if detail["lifecycle_status"] != "active" or detail["needs_review"]:
+            raise DomainError(
+                "not_ready",
+                "Only skills that are Ready (checked twice and kept) can be exported",
+                409,
+            )
+        definition = detail["definition"]
+        text, name = skill_export.render_proven(
+            detail["summary"]["request"] or definition["title"],
+            detail["summary"],
+            detail["successes"],
+            [*dict.fromkeys(definition.get("avoidance_rules", []))][:3],
+            [*dict.fromkeys(definition.get("recovery_notes", []))][:2],
+        )
+        with tempfile.TemporaryDirectory() as staging:
+            draft = Path(staging) / name
+            skill_export.write_skill(draft, text)
+            result = skill_export.install(agent, name, draft)
+        with self.db.transaction() as session:
+            self.audit(session, principal, namespace, "skill_export", f"{token}:{agent}")
+            session.commit()
+        return {**result, "procedure_token": token}
 
     def listing(self, principal, namespace, kind, limit=20, offset=0):
         principal.require(namespace, "read")
@@ -974,13 +1049,19 @@ class MemoryService:
                 )
 
                 def summary(definition):
-                    experience = definition.get("experience") or {}
+                    from .artifacts import extract_experience, test_command
+
+                    experience = extract_experience(definition["steps"])
+                    checks = [
+                        test_command(command) or command
+                        for command in experience["verification_commands"]
+                    ]
                     return {
                         "learned_from": (
                             asked.get(definition.get("provenance", {}).get("source_run")) or ""
                         )[:300],
-                        "changes": experience.get("writes", [])[:4],
-                        "check": experience.get("verification_commands", [])[-1:],
+                        "changes": experience["writes"][:4],
+                        "check": checks[-1:],
                     }
 
                 return {

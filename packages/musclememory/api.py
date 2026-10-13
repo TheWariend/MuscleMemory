@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from fnmatch import fnmatchcase
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import anyio
 from fastapi import Depends, FastAPI, Header, Query, Request
@@ -29,6 +29,8 @@ from .core import (
 )
 from .mcp_server import build_mcp
 from .service import MemoryService, conflict_error
+
+SkillAgent = Literal["codex", "claude"]
 
 
 class SecurityBoundary:
@@ -260,6 +262,10 @@ def create_app(service=None):
                 "version_history"
             ]
         }
+
+    @app.post("/v1/procedures/{procedure_token}/export")
+    def export_skill(procedure_token: Token, agent: SkillAgent, actor=auth):
+        return service.export_skill(actor, procedure_token, agent)
 
     @app.post("/v1/procedures/{procedure_token}/approve")
     def approve(procedure_token: Token, actor=auth):

@@ -234,3 +234,27 @@ def dashboard(open_browser=True):
     print("Opening the dashboard. This sign-in link works once, for 5 minutes.")
     if not (open_browser and webbrowser.open(link)):
         print(link)
+
+
+def export(skill, target):
+    """Write a Ready skill into Codex's or Claude Code's skills folder as SKILL.md."""
+    from .config import Settings
+    from .core import DomainError
+    from .security import Principal
+    from .service import MemoryService
+    from .skill_export import AGENTS
+
+    settings_file = config()
+    namespace = settings_file["namespace"]
+    owner = Principal(
+        "local-cli", settings_file["tenant"], {namespace: ["read", "write", "delete", "admin"]}
+    )
+    service = MemoryService(Settings.from_env())
+    try:
+        result = service.export_skill(owner, skill, target)
+        verb = "already has" if result["unchanged"] else "now has"
+        print(f"✓ {AGENTS[target]} {verb} the proven skill {result['name']}.")
+    except DomainError as error:
+        raise SystemExit(error.message) from None
+    finally:
+        service.db.engine.dispose()

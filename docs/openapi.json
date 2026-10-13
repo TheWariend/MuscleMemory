@@ -675,6 +675,64 @@
         }
       }
     },
+    "/v1/procedures/{procedure_token}/export": {
+      "post": {
+        "summary": "Export Skill",
+        "operationId": "export_skill_v1_procedures__procedure_token__export_post",
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "procedure_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "title": "Procedure Token"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "codex",
+                "claude"
+              ],
+              "type": "string",
+              "title": "Agent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/procedures/{procedure_token}/approve": {
       "post": {
         "summary": "Approve",

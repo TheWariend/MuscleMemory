@@ -188,6 +188,20 @@ def patch_edits(arguments, capability):
     """Bounded, literal changed lines from captured edits; never synthesize a fix."""
     if not any(word in capability for word in ("patch", "edit")):
         return []
+    old, new = arguments.get("old_string"), arguments.get("new_string")
+    path = normalized_path(arguments.get("file_path") or arguments.get("path"))
+    if path and isinstance(old, str) and isinstance(new, str):
+        # Claude Code's Edit tool: the exact text replaced, not a patch.
+        if MASK in old + new or redact(old + new) != old + new:
+            return []
+        item = {"file": path}
+        for name, text in (("before", old), ("after", new)):
+            lines = text.splitlines()[:8]
+            while lines and sum(len(line) + 1 for line in lines) > 600:
+                lines.pop()
+            if lines:
+                item[name] = "\n".join(lines)
+        return [item] if len(item) > 1 else []
     patch = arguments.get("patch", arguments.get("input", arguments.get("command", "")))
     if not isinstance(patch, str) or redact(patch) != patch or MASK in patch:
         return []
