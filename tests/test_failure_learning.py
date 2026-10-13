@@ -318,18 +318,34 @@ def test_watch_out_names_the_command_that_worked():
             }
         )
 
+    edit = ExecutionEvent.model_validate(
+        {
+            "event_id": "e3",
+            "sequence": 3,
+            "kind": "tool",
+            "capability": "filesystem.patch",
+            "tool_name": "apply_patch",
+            "arguments": {
+                "command": "*** Begin Patch\n*** Update File: app/exports.py\n*** End Patch"
+            },
+            "effect": "write",
+        }
+    )
     events = [
         shell(1, "sed -n '1,200p' app/exports.py"),
-        shell(2, "python3 -m unittest", "failure"),
-        shell(3, "python3 -m unittest discover", "failure"),
-        shell(4, "python3 -m unittest discover -s tests"),
-        shell(5, "make lint", "failure"),
+        # Fails before the fix and passes after it: the test caught the bug, no note.
+        shell(2, "python3 -m unittest discover -s tests", "failure"),
+        edit,
+        shell(4, "python3 -m unittest", "failure"),
+        shell(5, "python3 -m unittest discover", "failure"),
+        shell(6, "python3 -m unittest discover -s tests"),
+        shell(7, "make lint", "failure"),
     ]
     definition = SimpleNamespace(
         required_capabilities=["shell.execute"],
         required_permissions=[],
         environment_requirements={},
-        step_graph={"nodes": ["e1", "e4"]},
+        step_graph={"nodes": ["e1", "e3", "e6"]},
         steps=[],
     )
     derive_boundaries(definition, events, [])

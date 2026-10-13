@@ -6,7 +6,7 @@ import re
 import httpx
 from pydantic import ValidationError
 
-from .artifacts import command_parts, inspection_only, test_command
+from .artifacts import command_parts, inspection_only, targets, test_command
 from .core import DomainError
 from .security import MASK, redact
 
@@ -47,20 +47,34 @@ def value_free(note):
     return re.sub(r"[\w./-]+\.[A-Za-z0-9]{1,8}\b", "a file", note)
 
 
+FIXED = "fixed"
+
+
 def what_worked(failed, later):
-    """The command that worked after a failed one: the next passing test for a failed
-    test, otherwise the next passing run of the same program."""
+    """What followed a failed command. A different command that passed with no code
+    change in between is returned: the command itself was the problem. FIXED means a
+    test passed only after the code changed, so the failure was the test catching the
+    bug, not a mistake to avoid. None when neither can be told."""
     command = failed.arguments.get("command")
     if not isinstance(command, str) or not (words := command_parts(command)):
         return None
+    tested, changed = test_command(command), False
     for event in later:
-        other = event.arguments.get("command")
-        if event.kind != "tool" or event.status != "success" or not isinstance(other, str):
+        if event.kind != "tool":
             continue
-        if test_command(command) and (tested := test_command(other)) and tested != command:
-            return tested
-        if not test_command(command) and command_parts(other)[:1] == words[:1] and other != command:
-            return other.strip().splitlines()[0][:90]
+        if targets(event.arguments, event.effect, event.capability)[1]:
+            changed = True
+        other = event.arguments.get("command")
+        if event.status != "success" or not isinstance(other, str):
+            continue
+        if tested and (passed := test_command(other)):
+            if changed:
+                return FIXED
+            if passed != command:
+                return passed
+        elif not tested and not changed and command_parts(other)[:1] == words[:1]:
+            if other != command:
+                return other.strip().splitlines()[0][:90]
     return None
 
 
@@ -78,13 +92,14 @@ def derive_boundaries(definition, events, contrasts):
         if event.status == "failure":
             risk.append(f"An earlier attempt failed at {step}.")
             failed = event.arguments.get("command")
-            if worked := what_worked(event, events[index + 1 :]):
+            worked = what_worked(event, events[index + 1 :])
+            if worked is None:
+                avoidance.append(f"Before {step} again, check why it failed last time.")
+            elif worked != FIXED:
                 # Failures fixed by the same command share one note, written below.
                 if worked not in fixed:
                     avoidance.append(worked)
                 fixed.setdefault(worked, []).append(failed.strip().splitlines()[0][:90])
-            else:
-                avoidance.append(f"Before {step} again, check why it failed last time.")
         if event.exploratory and event.event_id not in definition.step_graph["nodes"]:
             avoidance.append(f"Skip the detour: {step} didn't help last time.")
         if (
