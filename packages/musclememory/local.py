@@ -191,7 +191,7 @@ def connect(agent, project="."):
         if module.exists():
             print(f"  export CLEANSLATE_MUSCLEMEMORY_NODE_MODULE={module}")
         else:
-            node = "<path to node_modules/musclememory/dist/node.js>"
+            node = "<path to node_modules/@thewariend/musclememory/dist/node.js>"
             print(f"  export CLEANSLATE_MUSCLEMEMORY_NODE_MODULE={node}")
         return
     hooks = home() / "hooks" / f"{agent}.json"

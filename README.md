@@ -39,7 +39,7 @@ Check them yourself: `python benchmarks/reproduce.py check`.
 ## Quick start
 
 ```sh
-pipx install musclememory             # or, from a clone: pip install -e .
+pipx install thewariend-musclememory  # or, from a clone: pip install -e .
 
 musclememory init                      # sets up ~/.musclememory and the small search model
 musclememory start                     # runs in the background on http://127.0.0.1:8080

@@ -11,7 +11,7 @@ npm install @thewariend/musclememory
 The SDK talks to a MuscleMemory server. Run one with the Python package:
 
 ```sh
-pipx install musclememory
+pipx install thewariend-musclememory
 musclememory init && musclememory start   # http://127.0.0.1:8080
 musclememory key --label my-agent         # prints an API key once
 ```

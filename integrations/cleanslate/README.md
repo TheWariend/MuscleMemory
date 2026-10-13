@@ -21,7 +21,7 @@ export CLEANSLATE_MUSCLEMEMORY_NODE_MODULE=/path/to/musclememory/packages/sdk-ty
 ```
 
 Build the SDK first if `dist/node.js` is missing (`npm run build --workspace
-musclememory`).
+@thewariend/musclememory`).
 
 ## Desktop app and CLI
 

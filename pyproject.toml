@@ -3,8 +3,8 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "musclememory"
-version = "0.1.0"
+name = "thewariend-musclememory"
+version = "0.1.1"
 description = "Open-source procedural memory for AI agents: learns from what worked and what failed."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
