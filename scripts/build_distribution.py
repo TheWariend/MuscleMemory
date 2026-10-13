@@ -19,7 +19,7 @@ def main():
     subprocess.run(["npm", "run", "build"], cwd=ROOT, check=True)
     with tempfile.TemporaryDirectory(prefix="musclememory-build-") as directory:
         source = Path(directory)
-        for name in ("pyproject.toml", "LICENSE", "NOTICE"):
+        for name in ("pyproject.toml", "README.md", "LICENSE", "NOTICE"):
             shutil.copyfile(ROOT / name, source / name)
         package = source / "packages/musclememory"
         shutil.copytree(

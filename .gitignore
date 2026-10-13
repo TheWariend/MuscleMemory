@@ -22,3 +22,8 @@ benchmark-results.json
 # Local research notes and generated reports (not part of the project)
 research_notes/
 reports/
+
+# Copied in by scripts/build_distribution.py and npm pack
+packages/musclememory/static/
+packages/sdk-typescript/LICENSE
+packages/sdk-typescript/NOTICE

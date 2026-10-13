@@ -1,8 +1,21 @@
 {
   "name": "musclememory",
   "version": "0.1.0",
+  "description": "TypeScript SDK for MuscleMemory, open-source procedural memory for AI agents.",
   "license": "Apache-2.0",
+  "author": "TheWariend",
+  "homepage": "https://thewariend.com/musclememory",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheWariend/MuscleMemory.git",
+    "directory": "packages/sdk-typescript"
+  },
+  "bugs": "https://github.com/TheWariend/MuscleMemory/issues",
+  "keywords": ["musclememory", "agent-memory", "procedural-memory", "ai-agents", "coding-agents", "mcp"],
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -14,9 +27,11 @@
     }
   },
   "types": "./dist/index.d.ts",
+  "files": ["dist", "LICENSE", "NOTICE"],
   "scripts": {
     "build": "tsc",
-    "test": "npm run build && node --test tests/*.test.mjs"
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "prepack": "npm run build && cp ../../LICENSE ../../NOTICE ."
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

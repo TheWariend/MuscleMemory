@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/images/logo-dark.png">
-    <img src="docs/images/logo-light.png" alt="MuscleMemory" width="150">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/logo-dark.png">
+    <img src="https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/logo-light.png" alt="MuscleMemory" width="150">
   </picture>
 </p>
 
@@ -26,20 +26,20 @@ and time by 28.2%**, with every task still passing. In an early run with Claude 
 Sonnet 5.5, using skills that Codex had learned, it cut **input tokens by 43.5% and tool
 calls by 30%**. On real Django issues from SWE-bench, with a skill learned from other
 issues in the same area, Codex solved as many as without memory with about half the tokens
-(a small run; [details](benchmarks/results/codex/django-forms-01/report.md)).
+(a small run; [details](https://github.com/TheWariend/MuscleMemory/blob/main/benchmarks/results/codex/django-forms-01/report.md)).
 Check them yourself: `python benchmarks/reproduce.py check`.
-[Codex method and data](benchmarks/results/codex/luna-03/report.md) ·
-[Claude Code run](benchmarks/results/claude/sonnet-01/report.md) ·
-[Whitepaper](docs/whitepaper.md).
+[Codex method and data](https://github.com/TheWariend/MuscleMemory/blob/main/benchmarks/results/codex/luna-03/report.md) ·
+[Claude Code run](https://github.com/TheWariend/MuscleMemory/blob/main/benchmarks/results/claude/sonnet-01/report.md) ·
+[Whitepaper](https://github.com/TheWariend/MuscleMemory/blob/main/docs/whitepaper.md).
 
 <p align="center">
-  <img src="docs/images/dashboard-playground.png" alt="The MuscleMemory playground: a task, the skill it matched, and what gets added to the agent's prompt" width="860">
+  <img src="https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/dashboard-playground.png" alt="The MuscleMemory playground: a task, the skill it matched, and what gets added to the agent's prompt" width="860">
 </p>
 
 ## Quick start
 
 ```sh
-pipx install thewariend-musclememory   # or, from a clone: pip install -e .
+pipx install musclememory             # or, from a clone: pip install -e .
 
 musclememory init                      # sets up ~/.musclememory and the small search model
 musclememory start                     # runs in the background on http://127.0.0.1:8080
@@ -48,7 +48,7 @@ musclememory dashboard                 # opens the dashboard, already signed in
 ```
 
 Then use your agent as usual. There are no keys or config files to copy.
-More in [Install](docs/install.md).
+More in [Install](https://github.com/TheWariend/MuscleMemory/blob/main/docs/install.md).
 
 ## How it works
 
@@ -78,7 +78,7 @@ flowchart LR
 - **Local and open.** SQLite and a small on-device model by default: no account and no
   outside calls. Use PostgreSQL with pgvector for teams.
 
-More detail in [How it works](docs/how-it-works.md).
+More detail in [How it works](https://github.com/TheWariend/MuscleMemory/blob/main/docs/how-it-works.md).
 
 ## Works with
 
@@ -91,26 +91,26 @@ More detail in [How it works](docs/how-it-works.md).
 | Any MCP client | Five tools: recall, observe, learn, evaluate, inspect |
 | Your own agent | Python and TypeScript SDKs |
 
-See [Integrations](docs/integrations.md).
+See [Integrations](https://github.com/TheWariend/MuscleMemory/blob/main/docs/integrations.md).
 
 ## Dashboard
 
 | | |
 |---|---|
-| ![Home](docs/images/dashboard-home.png) | ![Skills](docs/images/dashboard-skills.png) |
+| ![Home](https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/dashboard-home.png) | ![Skills](https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/dashboard-skills.png) |
 | **Home:** what your agents can reuse, and anything waiting for your OK | **Skills:** each one with the task it came from, the files it changes and the test that checks it |
-| ![A skill](docs/images/dashboard-skill.png) | ![Connect](docs/images/dashboard-connect.png) |
+| ![A skill](https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/dashboard-skill.png) | ![Connect](https://raw.githubusercontent.com/TheWariend/MuscleMemory/main/docs/images/dashboard-connect.png) |
 | **A skill:** its steps in plain words, its proof, and what to watch out for | **Connect:** one command per agent |
 
 ## Docs
 
-- [Whitepaper](docs/whitepaper.md): the design, trust rules, retrieval and evaluation in one paper
-- [Install and run](docs/install.md): local setup, Docker and PostgreSQL, configuration
-- [How it works](docs/how-it-works.md): the learning loop, retrieval, storage and security
-- [Integrations](docs/integrations.md): each agent, MCP and the SDKs
-- [Benchmarks](docs/benchmarks.md): results, method and limits
-- [API contracts](docs/contracts.md): MCP tools and REST
-- [Roadmap](docs/roadmap.md): what's next and known limits
+- [Whitepaper](https://github.com/TheWariend/MuscleMemory/blob/main/docs/whitepaper.md): the design, trust rules, retrieval and evaluation in one paper
+- [Install and run](https://github.com/TheWariend/MuscleMemory/blob/main/docs/install.md): local setup, Docker and PostgreSQL, configuration
+- [How it works](https://github.com/TheWariend/MuscleMemory/blob/main/docs/how-it-works.md): the learning loop, retrieval, storage and security
+- [Integrations](https://github.com/TheWariend/MuscleMemory/blob/main/docs/integrations.md): each agent, MCP and the SDKs
+- [Benchmarks](https://github.com/TheWariend/MuscleMemory/blob/main/docs/benchmarks.md): results, method and limits
+- [API contracts](https://github.com/TheWariend/MuscleMemory/blob/main/docs/contracts.md): MCP tools and REST
+- [Roadmap](https://github.com/TheWariend/MuscleMemory/blob/main/docs/roadmap.md): what's next and known limits
 
 ## Status
 
@@ -118,10 +118,10 @@ MuscleMemory works and is tested: 126 Python tests on SQLite and PostgreSQL, and
 TypeScript tests. It's early. The benchmarks cover repeat tasks on three controlled codebases,
 not every kind of work, and the Claude Code run is small. The hooks and CleanSlate learn on their own; with the SDKs your code
 reports when a task succeeded.
-See the [roadmap](docs/roadmap.md).
+See the [roadmap](https://github.com/TheWariend/MuscleMemory/blob/main/docs/roadmap.md).
 
 Issues and pull requests are welcome. Please report security issues privately, as
-described in [SECURITY.md](SECURITY.md).
+described in [SECURITY.md](https://github.com/TheWariend/MuscleMemory/blob/main/SECURITY.md).
 
 ## License
 
