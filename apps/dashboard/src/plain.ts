@@ -69,22 +69,6 @@ export function shortTitle(title?: string) {
   return first.length > 110 ? `${first.slice(0, 107)}…` : first;
 }
 
-// Skills learned before notes were written in plain English still carry the old wording.
-const legacyNotes: Array<[RegExp, string]> = [
-  [/^Avoid repeating (\S+) without checking its argument shape\.$/, 'Before repeating a step that failed, check why it failed last time.'],
-  [/^Earlier attempt failed: .*$/, 'An earlier attempt failed at one of these steps.'],
-  [/^\S+ has (write|destructive) effects; native approval applies\.$/, 'Some steps change files or run commands; your agent still asks first.'],
-  [/^An exploratory action was abandoned: .*$/, 'A detour was dropped because it didn’t help.'],
-  [/^A successful recovery retried .*$/, 'A step failed once and worked when retried.'],
-  [/^Successful contrast contains an additional shape for .*$/, 'The run that worked did an extra step that a failed run skipped.'],
-  [/^Failed contrast used a different action shape for .*$/, 'A failed run did a step differently from the run that worked.'],
-  [/^Argument shape differs between outcomes for .*$/, 'A failed run used a step differently from the run that worked.'],
-];
-export function plainNote(note: string) {
-  for (const [pattern, text] of legacyNotes) if (pattern.test(note)) return text;
-  return note;
-}
-
 /** "Passed 2 of 2 checks", "Needs 1 more check": where a skill stands, in words. */
 export function checksLine(successes = 0, failures = 0, status = '') {
   if (status === 'flagged') return `Failed ${failures} of ${successes + failures} checks`;

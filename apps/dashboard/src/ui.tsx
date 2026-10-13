@@ -266,3 +266,8 @@ export class ErrorBoundary extends React.Component<{children: React.ReactNode; r
     </div>;
   }
 }
+
+/** A note with `commands` in backticks shown as code. */
+export function NoteText({text}: {text: string}) {
+  return <>{text.split(/(`[^`]+`)/).map((part, i) => /^`[^`]+`$/.test(part) ? <code key={i}>{part.slice(1, -1)}</code> : part)}</>;
+}

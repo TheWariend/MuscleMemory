@@ -1,9 +1,9 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import type {RecallResult, RunSummary} from '../api';
 import {ProviderLogo, providerOf} from '../logos';
-import {plainNote, shortTitle} from '../plain';
+import {shortTitle} from '../plain';
 import {useSkillDetails} from '../skillData';
-import {Empty, Icon, Logo} from '../ui';
+import {Empty, Icon, Logo, NoteText} from '../ui';
 import {useWorkspace} from '../workspace';
 
 type Turn = {id: number; task: string; result?: RecallResult; error?: string};
@@ -110,7 +110,7 @@ function Answer({task, result, onOpen, titles}: {task: string; result: RecallRes
       {pointer.changed_files?.length ? <li><span>Files to change</span>{pointer.changed_files.join(', ')}</li> : null}
       {pointer.requires_files?.length ? <li><span>Read first</span>{pointer.requires_files.join(', ')}</li> : null}
       {pointer.verify?.length ? <li><span>Check it with</span><code>{pointer.verify.join(' && ')}</code></li> : null}
-      {pointer.avoid?.length ? <li><span>Watch out</span>{[...new Set(pointer.avoid.map(plainNote))].join(' ')}</li> : null}
+      {pointer.avoid?.length ? <li><span>Watch out</span><div>{[...new Set(pointer.avoid)].map(note => <p key={note}><NoteText text={note}/></p>)}</div></li> : null}
     </ul>
     <button type="button" className="link-button" aria-expanded={exact} onClick={() => setExact(!exact)}>{exact ? 'Hide' : 'Show'} the exact prompt your agent would get</button>
     {exact && <pre className="prompt-preview">{`${task}\n\n${result.guidance ?? ''}`}</pre>}

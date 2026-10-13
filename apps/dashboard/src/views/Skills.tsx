@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {ProcedureDetail, ProcedureSummary, SkillSummary} from '../api';
-import {agentName, checksLine, describeStep, plainNote, requestDetails, shortCommand, shortTitle, skillStatus} from '../plain';
-import {Badge, CodeBlock, Empty, formatDuration, Icon, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
+import {agentName, checksLine, describeStep, requestDetails, shortCommand, shortTitle, skillStatus} from '../plain';
+import {Badge, CodeBlock, Empty, formatDuration, Icon, NoteText, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {ProviderLogo} from '../logos';
 import {useWorkspace} from '../workspace';
 
@@ -224,6 +224,6 @@ function Summary({summary, successes}: {summary: SkillSummary; successes: number
 }
 
 function Notes({title, items, icon}: {title: string; items: string[]; icon: 'alert' | 'refresh'}) {
-  const notes = [...new Set(items.map(plainNote))];
-  return <section className="sub"><h3><Icon name={icon} size={13}/>{title}</h3><ul className="bullets">{notes.map(i => <li key={i}>{i}</li>)}</ul></section>;
+  const notes = [...new Set(items)];
+  return <section className="sub"><h3><Icon name={icon} size={13}/>{title}</h3><ul className="bullets">{notes.map(i => <li key={i}><NoteText text={i}/></li>)}</ul></section>;
 }
