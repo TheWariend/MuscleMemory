@@ -98,3 +98,58 @@ def test_configurable_embedding_dimension_and_hash_label(service, principal, mon
         Settings(embedding_dim=32, embedding_url="https://provider.example/embed")
     )
     assert embeddings.embed("semantic fixture") == [1.0] * 32
+
+
+def test_file_change_tools_are_interchangeable_but_others_are_not():
+    from musclememory.core import RuntimeProfile
+    from musclememory.shapes import bound_capability, conditions_satisfied
+
+    claude = RuntimeProfile(
+        agent_name="claude", bindings={"filesystem.edit": "Edit", "shell.execute": "Bash"}
+    )
+    assert bound_capability("filesystem.patch", claude.bindings) == "filesystem.edit"
+    assert bound_capability("filesystem.write", claude.bindings) == "filesystem.edit"
+    assert bound_capability("browser.navigate", claude.bindings) is None
+    assert conditions_satisfied(
+        ["capability:filesystem.patch", "capability:shell.execute"], claude, []
+    )
+    assert not conditions_satisfied(["capability:filesystem.delete"], claude, [])
+
+
+@pytest.mark.parametrize(
+    ("command", "looking"),
+    [
+        ("pwd && rg --files", True),
+        ("sed -n '1,240p' app/a.py", True),
+        ("git diff -- app/a.py", True),
+        ("ls; grep -n x -r tests | head -20", True),
+        ("sed -i s/a/b/ app/a.py", False),
+        ("cat a > b", False),
+        ("git commit -am fix", False),
+        ("find . -name '*.tmp' -delete", False),
+        ("python3 -m unittest", False),
+    ],
+)
+def test_inspection_only_commands(command, looking):
+    from musclememory.artifacts import inspection_only
+
+    assert inspection_only({"command": command}, "shell.execute") is looking
+
+
+@pytest.mark.parametrize(
+    ("command", "test"),
+    [
+        (
+            "python3 -m unittest discover -s tests 2>&1 | tail -5",
+            "python3 -m unittest discover -s tests",
+        ),
+        ("python3 - <<'E'\nfix()\nE\npython3 -m unittest 2>&1 | tail -5", "python3 -m unittest"),
+        ("cd repo && pytest -q tests/test_a.py > out.txt", "pytest -q tests/test_a.py"),
+        ("npm test 2>&1 | tail", "npm test"),
+        ("git status", None),
+    ],
+)
+def test_the_test_run_is_taken_out_of_longer_commands(command, test):
+    from musclememory.artifacts import test_command
+
+    assert test_command(command) == test

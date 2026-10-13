@@ -10,9 +10,12 @@ import shlex
 
 from .security import MASK, redact
 
+# Added by the capture hooks to a shell step: project files the command changed.
+WORKSPACE_CHANGES = "$mm_workspace_changes"
 PATH_KEYS = {"path", "file_path", "filename", "file", "target", "output_path"}
 READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc"}
 TESTERS = {"pytest", "unittest", "jest", "vitest", "cargo", "go"}
+TEST_WORDS = {"test", "tests", "check", "unittest", "unittest.discover"}
 
 
 def normalized_path(value):
@@ -39,6 +42,55 @@ def command_parts(command):
         return []
 
 
+LOOKING = {"status", "diff", "log", "show", "ls-files"}
+
+
+def inspection_only(arguments, capability=""):
+    """A shell command that only looks around: reading, listing, git status/diff/log."""
+    command = arguments.get("command")
+    if not str(capability).startswith("shell.") or arguments.get(WORKSPACE_CHANGES):
+        return False
+    if not isinstance(command, str) or any(char in command for char in ">`$<"):
+        return False
+    pieces = [piece for piece in re.split(r"&&|\|\||;|\||\n", command) if piece.strip()]
+    for piece in pieces:
+        words = command_parts(piece)
+        if not words:
+            return False
+        name = posixpath.basename(words[0])
+        if name == "sed" and any(word.startswith(("-i", "--in-place")) for word in words):
+            return False
+        if name == "find" and {"-delete", "-exec", "-execdir"} & set(words):
+            return False
+        looking = name == "git" and len(words) > 1 and words[1] in LOOKING
+        if not (name in READERS or name == "pwd" or looking):
+            return False
+    return True
+
+
+REDIRECT = re.compile(r"^\d*(?:>>?|<)(?:&\d+)?$|^&>$|^\d*>&\d+$")
+
+
+def test_command(command):
+    """Just the test run inside a longer shell command: no pipes, redirects or scripts."""
+    if not isinstance(command, str) or redact(command) != command:
+        return None
+    for piece in reversed(re.split(r"&&|\|\||;|\||\n", command)):
+        words = command_parts(piece)
+        if not any(posixpath.basename(word) in TESTERS or word in TEST_WORDS for word in words):
+            continue
+        kept, skip = [], False
+        for word in words:
+            if skip:
+                skip = False
+            elif REDIRECT.match(word):
+                skip = not re.search(r"&\d+$", word)  # `> file` names a target to drop too
+            else:
+                kept.append(word)
+        return shlex.join(kept) if kept else None
+    return None
+
+
 def normalized_command(command):
     words = command_parts(command)
     return shlex.join(words) if words else None
@@ -52,7 +104,7 @@ def operation_categories(arguments, capability=""):
         name = posixpath.basename(word)
         if name in READERS:
             operations.add("inspect")
-        if name in TESTERS or word in {"test", "tests", "check", "unittest", "unittest.discover"}:
+        if name in TESTERS or word in TEST_WORDS:
             operations.add("verify")
         if name in {"git"}:
             operations.add("version-control")
@@ -62,6 +114,8 @@ def operation_categories(arguments, capability=""):
             operations.add("runtime")
     if "patch" in capability or "edit" in capability or "write" in capability:
         operations.add("modify")
+    if arguments.get(WORKSPACE_CHANGES):  # a shell command that changed project files
+        operations.add("modify")
     return sorted(operations)
 
 
@@ -70,6 +124,11 @@ def targets(arguments, effect, capability=""):
     for key, value in arguments.items():
         if key in PATH_KEYS and (path := normalized_path(value)):
             (reads if effect == "read" else writes).add(path)
+    changed = arguments.get(WORKSPACE_CHANGES)
+    if isinstance(changed, list):
+        for name in changed:
+            if path := normalized_path(name):
+                writes.add(path)
     patch = arguments.get("patch", arguments.get("input", arguments.get("command", "")))
     if isinstance(patch, str):
         for name in re.findall(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", patch, re.M):
@@ -109,8 +168,9 @@ def extract_experience(steps):
         if command:
             commands.add(command)
             if "verify" in operation_categories(data["arguments"], data["capability"]):
-                if command not in verifiers:
-                    verifiers.append(command)
+                tested = test_command(data["arguments"].get("command")) or command
+                if tested not in verifiers:
+                    verifiers.append(tested)
         if before or after:
             actions.append({"step_token": data["step_token"], "reads": before, "writes": after})
     return {

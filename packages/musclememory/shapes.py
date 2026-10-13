@@ -125,13 +125,28 @@ def signature_key(capabilities):
     return hashlib.sha256(json.dumps(capabilities, separators=(",", ":")).encode()).hexdigest()
 
 
+# Changing a file is one ability, whatever an agent calls its tool: Codex patches,
+# Claude Code edits and writes, Cursor writes. Skills learned by one agent stay usable
+# by another. Every other capability must be bound exactly.
+FILE_CHANGE = ("filesystem.edit", "filesystem.patch", "filesystem.write")
+
+
+def bound_capability(capability, bindings):
+    """The agent's own capability that provides ``capability``, or None."""
+    if capability in bindings:
+        return capability
+    if capability in FILE_CHANGE:
+        return next((other for other in FILE_CHANGE if other in bindings), None)
+    return None
+
+
 def conditions_satisfied(conditions, profile, prefix):
     for condition in conditions:
         if not isinstance(condition, str) or ":" not in condition:
             return False
         kind, value = condition.split(":", 1)
         if kind == "capability":
-            satisfied = value in profile.bindings
+            satisfied = bound_capability(value, profile.bindings) is not None
         elif kind == "permission":
             satisfied = value in profile.permissions
         elif kind == "environment":

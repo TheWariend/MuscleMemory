@@ -4,7 +4,7 @@ import json
 import re
 from copy import deepcopy
 
-from .artifacts import command_parts, extract_experience, targets
+from .artifacts import command_parts, extract_experience, operation_categories, targets
 from .core import DomainError, ExecutionEvent, LearningPolicy, ProcedureDefinition, ProcedureStep
 from .security import MASK, redact
 
@@ -97,6 +97,19 @@ def compile_trace(
         # unusable. Independent siblings remain; no invented serial edges.
         if blocked.intersection(event.dependencies):
             blocked.add(event.event_id)
+    evidence = set(proof.get("evidence_event_ids", []))
+    # A test run whose result cannot be confirmed (for example `tests | tail` with no
+    # summary line) proves nothing and changes nothing, so it is left out like a failed
+    # attempt. Unconfirmed steps that change files still stop learning below.
+    unconfirmed_checks = {
+        e.event_id
+        for e in events
+        if e.kind == "tool"
+        and not e.outcome_verified
+        and e.event_id not in evidence
+        and {"verify"} <= set(operation_categories(e.arguments, e.capability or ""))
+        and "modify" not in operation_categories(e.arguments, e.capability or "")
+    }
     selected = {
         e.event_id
         for e in events
@@ -104,6 +117,7 @@ def compile_trace(
         and e.status == "success"
         and not e.exploratory
         and e.event_id not in blocked
+        and e.event_id not in unconfirmed_checks
     }
     warnings = []
     modified = {
@@ -112,7 +126,6 @@ def compile_trace(
         if event.kind == "tool" and event.status == "success"
         for path in targets(event.arguments, event.effect, event.capability)[1]
     }
-    evidence = set(proof.get("evidence_event_ids", []))
     for event in events:
         if event.event_id not in selected or event.event_id in evidence:
             continue

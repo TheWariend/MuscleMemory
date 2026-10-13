@@ -566,3 +566,289 @@ def test_failing_tests_teach_nothing(codex_hook_host, service, principal):
     config, *_ = codex_hook_host
     codex_session(config, "t1", "Fix the rounding bug", test_exit=1)
     assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+def git_project(tmp_path):
+    repo = tmp_path / "project"
+    (repo / "app").mkdir(parents=True)
+    (repo / "app" / "rounding.py").write_text("def cents(x):\n    return int(x)\n")
+    (repo / ".gitignore").write_text("__pycache__/\n")
+    for command in (
+        ["init", "-q"],
+        ["add", "."],
+        ["-c", "user.name=t", "-c", "user.email=t@localhost", "commit", "-qm", "base"],
+    ):
+        subprocess.run(["git", "-C", str(repo), *command], check=True)
+    return repo
+
+
+def claude_shell_session(queue, repo, steps):
+    """Drive Claude hooks through `steps`: (tool, arguments, response, effect on disk)."""
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+
+    def hook(event, **fields):
+        return queue.handle(
+            "claude", payload(event, cwd=str(repo), **fields), tools, runtime, "team"
+        )
+
+    token, _ = hook("UserPromptSubmit", prompt="Fix rounding in app/rounding.py")
+    for index, (tool, arguments, response, effect) in enumerate(steps):
+        hook("PreToolUse", tool_use_id=f"t{index}", tool_name=tool)
+        effect()
+        hook(
+            "PostToolUse",
+            tool_use_id=f"t{index}",
+            tool_name=tool,
+            tool_input=arguments,
+            tool_response=response,
+        )
+    _, outcome = hook("Stop")
+    events = [
+        json.loads(row[0])
+        for row in queue.db.execute(
+            "SELECT payload FROM events WHERE run=? ORDER BY sequence", (token,)
+        )
+    ]
+    return outcome, [event for event in events if event["kind"] == "tool"]
+
+
+def nothing():
+    return None
+
+
+def test_shell_edits_count_as_code_changes(tmp_path):
+    repo = git_project(tmp_path)
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    def cache():
+        (repo / "app" / "__pycache__").mkdir(exist_ok=True)
+        (repo / "app" / "__pycache__" / "rounding.cpython.pyc").write_bytes(b"\0")
+
+    try:
+        outcome, events = claude_shell_session(
+            queue,
+            repo,
+            [
+                (
+                    "Read",
+                    {"file_path": str(repo / "app" / "rounding.py")},
+                    {"type": "text"},
+                    nothing,
+                ),
+                (
+                    "Bash",
+                    {"command": f"cd {repo} && python3 - <<'E'\nedit('app/rounding.py')\nE"},
+                    {"stdout": "", "stderr": ""},
+                    rewrite,
+                ),
+                (
+                    "Bash",
+                    {"command": "python3 -m unittest discover -s tests"},
+                    {"stdout": "", "stderr": "Ran 4 tests\n\nOK\n"},
+                    cache,
+                ),
+            ],
+        )
+    finally:
+        queue.close()
+    assert outcome == "verified"
+    read, edit, test = events
+    assert read["arguments"]["file_path"] == "app/rounding.py"  # relative to the project
+    assert edit["arguments"]["$mm_workspace_changes"] == ["app/rounding.py"]
+    assert not edit["arguments"]["command"].startswith("cd ")
+    assert "$mm_workspace_changes" not in test["arguments"]  # caches are not code changes
+
+
+def test_one_command_that_edits_then_tests_verifies(tmp_path):
+    repo = git_project(tmp_path)
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    try:
+        outcome, _ = claude_shell_session(
+            queue,
+            repo,
+            [
+                (
+                    "Bash",
+                    {"command": "python3 fix.py && python3 -m unittest discover -s tests"},
+                    {"stdout": "", "stderr": "OK\n"},
+                    rewrite,
+                )
+            ],
+        )
+    finally:
+        queue.close()
+    assert outcome == "verified"
+
+
+@pytest.mark.parametrize(
+    ("output", "expected"),
+    [("Ran 4 tests\n\nOK\n", "verified"), ("FAILED (failures=1)\n", "ended"), ("", "ended")],
+)
+def test_piped_tests_need_the_runners_own_summary(tmp_path, output, expected):
+    repo = git_project(tmp_path)
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    try:
+        outcome, events = claude_shell_session(
+            queue,
+            repo,
+            [
+                ("Edit", {"file_path": str(repo / "app" / "rounding.py")}, {}, rewrite),
+                (
+                    "Bash",
+                    {"command": "python3 -m unittest discover -s tests 2>&1 | tail -5"},
+                    {"stdout": output, "stderr": ""},
+                    nothing,
+                ),
+            ],
+        )
+    finally:
+        queue.close()
+    assert outcome == expected
+    if "FAILED" in output:
+        assert events[-1]["status"] == "failure"
+
+
+def test_claude_shell_session_learns_a_skill_end_to_end(
+    codex_hook_host, service, principal, tmp_path
+):
+    """What Sonnet 5.5 did: edit from a heredoc, an unreadable piped run, then a clear pass."""
+    config, *_ = codex_hook_host
+    repo = git_project(tmp_path)
+
+    def hook(event, **fields):
+        return run_hook(config, "claude", payload(event, cwd=str(repo), **fields))
+
+    def bash(source, command, stdout, change=None):
+        hook("PreToolUse", tool_name="Bash", tool_use_id=source)
+        if change:
+            change()
+        hook(
+            "PostToolUse",
+            tool_name="Bash",
+            tool_use_id=source,
+            tool_input={"command": command},
+            tool_response={"stdout": stdout, "stderr": ""},
+        )
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    hook("UserPromptSubmit", prompt="Fix rounding in app/rounding.py")
+    bash("edit", "python3 - <<'E'\nedit()\nE", "", rewrite)
+    bash("noisy", "python3 -m unittest discover -s tests 2>&1 | tail -3", "Traceback ...")
+    bash("clear", "python3 -m unittest discover -s tests 2>&1 | tail -3", "Ran 3 tests\n\nOK")
+    hook("Stop")
+    skills = service.listing(principal, "team", "procedures")["items"]
+    assert len(skills) == 1 and skills[0]["needs_review"]
+    from musclememory.core import InspectInput
+
+    detail = service.inspect(principal, InspectInput(procedure_token=skills[0]["procedure_token"]))
+    definition = detail["definition"]
+    assert definition["experience"]["writes"] == ["app/rounding.py"]
+    assert len(definition["steps"]) == 2  # the unreadable test run is left out
+
+
+def test_a_cd_inside_a_command_keeps_the_same_session(tmp_path):
+    repo = git_project(tmp_path)
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+
+    def hook(event, cwd, **fields):
+        return queue.handle("claude", payload(event, cwd=str(cwd), **fields), tools, runtime, "t")
+
+    try:
+        token, _ = hook("UserPromptSubmit", repo, prompt="Look around")
+        hook("PreToolUse", repo, tool_use_id="cd", tool_name="Bash")
+        # Claude reports the directory the command moved to, then resets it.
+        hook(
+            "PostToolUse",
+            repo / "app",
+            tool_use_id="cd",
+            tool_name="Bash",
+            tool_input={"command": "cd app && ls"},
+            tool_response={"stdout": "rounding.py", "stderr": ""},
+        )
+        hook("Stop", repo)
+        assert json.loads(queue.listing()[0]["gaps"]) == []
+        assert queue.db.execute("SELECT count(*) FROM active").fetchone()[0] == 0
+    finally:
+        queue.close()
+
+
+def test_a_skill_codex_learned_is_handed_to_claude_code(codex_hook_host, service, principal):
+    from musclememory.core import RecallInput
+
+    config, *_ = codex_hook_host
+    for turn, prompt in [
+        ("t1", "Fix the rounding bug in app/rounding.py"),
+        ("t2", "Rounding in app/rounding.py is wrong again"),
+        ("t3", "Please repair rounding in app/rounding.py"),
+    ]:
+        codex_session(config, turn, prompt)
+    skill = service.listing(principal, "team", "procedures")["items"][0]
+    service.approve(principal, skill["procedure_token"])
+    found = service.recall(
+        principal,
+        RecallInput(
+            intent_text="Fix the rounding bug in app/rounding.py",
+            runtime_profile=profile("claude"),
+            visibility_scope="team",
+        ),
+    )
+    assert not found["no_match"]
+    assert found["candidates"][0]["resolved_tools"]["filesystem.patch"] == "Edit"
+
+
+def test_claude_shell_session_counts_as_a_check_on_a_codex_skill(
+    codex_hook_host, service, principal, tmp_path
+):
+    config, *_ = codex_hook_host
+    for turn, prompt in [
+        ("t1", "Fix the rounding bug in app/rounding.py"),
+        ("t2", "Rounding in app/rounding.py is wrong again"),
+        ("t3", "Please repair rounding in app/rounding.py"),
+    ]:
+        codex_session(config, turn, prompt)
+    skill = service.listing(principal, "team", "procedures")["items"][0]
+    service.approve(principal, skill["procedure_token"])
+    repo = git_project(tmp_path)
+
+    def hook(event, **fields):
+        return run_hook(
+            config, "claude", payload(event, cwd=str(repo), session_id="claude-1", **fields)
+        )
+
+    def bash(source, command, stdout, change=None):
+        hook("PreToolUse", tool_name="Bash", tool_use_id=source)
+        if change:
+            change()
+        hook(
+            "PostToolUse",
+            tool_name="Bash",
+            tool_use_id=source,
+            tool_input={"command": command},
+            tool_response={"stdout": stdout, "stderr": ""},
+        )
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    injected = hook("UserPromptSubmit", prompt="Fix the rounding bug in app/rounding.py")
+    assert "additionalContext" in json.dumps(injected)  # Codex's skill reaches Claude Code
+    bash("edit", "python3 - <<'E'\nfix()\nE", "", rewrite)
+    bash("test", "python3 -m unittest discover -s tests 2>&1 | tail -3", "Ran 3 tests\n\nOK")
+    hook("Stop")
+    skills = service.listing(principal, "team", "procedures")["items"]
+    assert len(skills) == 1  # a check on the same skill, not a duplicate
+    assert skills[0]["successes"] == 3

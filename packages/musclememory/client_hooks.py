@@ -19,6 +19,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
 
+from . import workspace
+from .artifacts import PATH_KEYS, WORKSPACE_CHANGES, command_parts, operation_categories
 from .core import ExecutionEvent, RuntimeProfile
 from .delivery import render_pointer
 from .sdk import MuscleMemoryClient
@@ -149,6 +151,9 @@ class HookQueue:
             CREATE TABLE IF NOT EXISTS active (
                 run TEXT NOT NULL, source TEXT NOT NULL, started REAL NOT NULL,
                 PRIMARY KEY(run,source));
+            CREATE TABLE IF NOT EXISTS snapshots (
+                run TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
+                PRIMARY KEY(run,source));
             CREATE TABLE IF NOT EXISTS injections (
                 identity TEXT NOT NULL, session TEXT NOT NULL, procedure TEXT NOT NULL,
                 version INTEGER NOT NULL, context_hash TEXT NOT NULL, tokens INTEGER NOT NULL,
@@ -211,16 +216,31 @@ class HookQueue:
 
     def handle(self, client, payload, tools, profile, scope):
         event_name = payload.get("hook_event_name", "")
-        session = digest(
-            [
-                client,
-                payload.get("cwd", payload.get("workspace_roots", [])),
-                payload.get("session_id", payload.get("conversation_id")),
-            ]
-        )
+        # The session id alone names a session. The working directory is not part of it:
+        # Claude Code reports the directory a `cd` moved to on that tool's PostToolUse.
+        session = digest([client, payload.get("session_id", payload.get("conversation_id"))])
         if not payload.get("session_id", payload.get("conversation_id")):
             raise ValueError("Hooks require a client session identifier")
         turn = str(payload.get("turn_id", payload.get("generation_id", "")))
+        # Shell commands can change code without an edit tool: note which project files
+        # differ from version control around each one. Taken outside the queue lock.
+        shell = str(tools.get(payload.get("tool_name"), ("", ""))[0]).startswith("shell.")
+        tool_event = event_name in {
+            "PreToolUse",
+            "preToolUse",
+            "PostToolUse",
+            "PostToolUseFailure",
+            "postToolUse",
+            "postToolUseFailure",
+        }
+        view = workspace.snapshot(payload.get("cwd")) if shell and tool_event else None
+        project = (
+            view["root"]
+            if view
+            else workspace.project_root(payload.get("cwd"))[0]
+            if tool_event
+            else None
+        )
         with self.transaction():
             row = self.db.execute(
                 "SELECT * FROM runs WHERE identity=? AND session=? "
@@ -306,6 +326,11 @@ class HookQueue:
                 self.db.execute(
                     "INSERT OR IGNORE INTO active VALUES (?,?,?)", (token, source, time.time())
                 )
+                if view:
+                    self.db.execute(
+                        "INSERT OR REPLACE INTO snapshots VALUES (?,?,?)",
+                        (token, source, json.dumps(view)),
+                    )
                 return token, "started"
             if event_name not in {
                 "PostToolUse",
@@ -336,6 +361,23 @@ class HookQueue:
             arguments = payload.get("tool_input", {})
             if not isinstance(arguments, dict):
                 arguments = {"input": arguments}
+            spellings = workspace.roots(payload.get("cwd"), project) if project else []
+            if spellings:
+                arguments = {
+                    key: workspace.relative_path(value, spellings) if key in PATH_KEYS else value
+                    for key, value in arguments.items()
+                }
+                if "command" in arguments:
+                    arguments["command"] = workspace.relative_command(
+                        arguments["command"], spellings
+                    )
+            before = self.db.execute(
+                "SELECT state FROM snapshots WHERE run=? AND source=?", (token, source)
+            ).fetchone()
+            self.db.execute("DELETE FROM snapshots WHERE run=? AND source=?", (token, source))
+            changed = workspace.changed_files(json.loads(before[0]) if before else None, view)
+            if changed:
+                arguments[WORKSPACE_CHANGES] = changed[:64]
             response = payload.get("tool_response", payload.get("tool_output"))
             if isinstance(response, str):
                 try:
@@ -359,6 +401,29 @@ class HookQueue:
                 )
                 outcome_verified = bool(code or explicit or failed)
                 if not outcome_verified:
+                    self.gap(token, "unverified_exit_status")
+            command = arguments.get("command")
+            if (
+                shell
+                and not failed
+                and "verify" in operation_categories(arguments, tools[name][0])
+                and workspace.piped_test(command_parts(command), str(command))
+            ):
+                # `tests | tail` exits with tail's status; trust the runner's own summary.
+                output = (
+                    response
+                    if isinstance(response, str)
+                    else "\n".join(
+                        str(response.get(key) or "") for key in ("stdout", "stderr", "output")
+                    )
+                    if isinstance(response, dict)
+                    else ""
+                )
+                verdict = workspace.test_output_verdict(output)
+                if verdict is False:
+                    failed = True
+                elif verdict is None:
+                    outcome_verified = False
                     self.gap(token, "unverified_exit_status")
             self.append(
                 token,
@@ -384,7 +449,6 @@ class HookQueue:
 
     def _tests_passed(self, token):
         """A session counts as verified when a test command passed after the last code change."""
-        from .artifacts import operation_categories
 
         gaps = set(
             json.loads(
@@ -404,9 +468,13 @@ class HookQueue:
             if event["kind"] != "tool":
                 continue
             operations = operation_categories(event["arguments"], event["capability"])
-            if "modify" in operations and event["status"] == "success":
+            # A shell command that changed files changed them even if it then failed.
+            if "modify" in operations and (
+                event["status"] == "success" or event["arguments"].get(WORKSPACE_CHANGES)
+            ):
                 last_change, passing_test = index, None
-            elif "verify" in operations:
+            # One command may change files and then run the tests (`script && tests`).
+            if "verify" in operations:
                 passing_test = (
                     event["event_id"]
                     if event["status"] == "success" and event.get("outcome_verified", True)
@@ -920,8 +988,6 @@ def hooks_command(arguments):
                 )
             )
         elif arguments.action == "learn":
-            from .artifacts import operation_categories
-
             evidence = queue.learning_evidence(client, arguments.run)
             ids = [
                 event["event_id"]

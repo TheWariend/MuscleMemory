@@ -34,7 +34,14 @@ from .retrieval import (
     reliability,
 )
 from .security import Principal, digest_key, new_key, redact
-from .shapes import capability_signature, contrast_diff, shape_matches, signature_key
+from .shapes import (
+    FILE_CHANGE,
+    bound_capability,
+    capability_signature,
+    contrast_diff,
+    shape_matches,
+    signature_key,
+)
 from .storage import (
     ArtifactPosting,
     Audit,
@@ -51,6 +58,17 @@ from .storage import (
     SignInCode,
     utcnow,
 )
+
+
+def changed_files(event):
+    """Project files a successful tool event changed, by any tool, as a set."""
+    from .artifacts import WORKSPACE_CHANGES, targets
+
+    if event.status != "success" and not event.arguments.get(WORKSPACE_CHANGES):
+        return set()
+    if event.capability in FILE_CHANGE or event.arguments.get(WORKSPACE_CHANGES):
+        return set(targets(event.arguments, event.effect, event.capability)[1]) or {"*"}
+    return set()
 
 
 class MemoryService:
@@ -692,18 +710,33 @@ class MemoryService:
                     for e in events
                     if e.kind == "tool" and e.status == "success" and e.outcome_verified
                 }
-                if not required.issubset(executed):
+                # Changing a file counts however it was done: an edit, a patch, or a
+                # shell command that changed project files.
+                if any(changed_files(e) for e in events if e.kind == "tool"):
+                    executed |= set(FILE_CHANGE)
+                if any(bound_capability(capability, executed) is None for capability in required):
                     raise DomainError(
                         "application_evidence", "Trace did not execute the required capabilities"
                     )
-                from .artifacts import operation_categories
+                from .artifacts import (
+                    WORKSPACE_CHANGES,
+                    inspection_only,
+                    operation_categories,
+                    targets,
+                )
 
                 # Check actual observed action shape and operation categories;
                 # a shell capability alone cannot prove a test or edit happened.
                 for step in revision.definition["steps"]:
                     operations = operation_categories(step["arguments"], step["capability"])
-                    if step.get("condition") or not (
-                        step["effect"] != "read" or step.get("critical") or "verify" in operations
+                    if (
+                        step.get("condition")
+                        or inspection_only(step["arguments"], step["capability"])
+                        or not (
+                            step["effect"] != "read"
+                            or step.get("critical")
+                            or "verify" in operations
+                        )
                     ):
                         continue
                     matches = [
@@ -714,12 +747,26 @@ class MemoryService:
                         and event.outcome_verified
                         and event.capability == step["capability"]
                         and shape_matches(
-                            step["arguments"], event.arguments, revision.definition["parameters"]
+                            step["arguments"],
+                            {k: v for k, v in event.arguments.items() if k != WORKSPACE_CHANGES},
+                            revision.definition["parameters"],
                         )
                         and set(operations).issubset(
                             operation_categories(event.arguments, event.capability)
                         )
                     ]
+                    if not matches and step["capability"] in FILE_CHANGE:
+                        # Another agent's tool: the same files changed is the same step.
+                        wanted = set(
+                            targets(step["arguments"], step["effect"], step["capability"])[1]
+                        )
+                        matches = [
+                            event
+                            for event in events
+                            if event.kind == "tool"
+                            and (changed := changed_files(event))
+                            and (not wanted or wanted & changed)
+                        ]
                     if not matches:
                         raise DomainError(
                             "application_evidence",

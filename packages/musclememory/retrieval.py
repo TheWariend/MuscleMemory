@@ -14,7 +14,7 @@ from sqlalchemy import Float, and_, cast, func, or_, select, text
 from .artifacts import extract_experience, query_keys
 from .compiler import signature
 from .core import DomainError
-from .shapes import conditions_satisfied
+from .shapes import bound_capability, conditions_satisfied
 from .storage import ArtifactPosting, Procedure, Revision, utcnow
 
 
@@ -213,7 +213,10 @@ def compatibility_freshness(procedure, revision, profile, settings):
     anchor = revision.validated_at or revision.created_at
     age_days = (utcnow() - anchor).total_seconds() / 86400
     if (
-        set(definition["required_capabilities"]) - set(profile.bindings)
+        any(
+            bound_capability(capability, profile.bindings) is None
+            for capability in definition["required_capabilities"]
+        )
         or set(definition["required_permissions"]) - set(profile.permissions)
         or any(
             profile.environment.get(key) != value
@@ -558,7 +561,8 @@ def rank_candidates(candidates, query, vector, profile, settings, embedding_spac
                 "avoidance_rules": definition.get("avoidance_rules", []),
                 "recovery_notes": definition.get("recovery_notes", []),
                 "resolved_tools": {
-                    cap: profile.bindings[cap] for cap in definition["required_capabilities"]
+                    cap: profile.bindings[bound_capability(cap, profile.bindings)]
+                    for cap in definition["required_capabilities"]
                 },
             }
         )
