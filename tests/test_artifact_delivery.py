@@ -244,3 +244,39 @@ def test_reindex_preserves_validation_and_history(service, principal):
     assert result["indexed_revisions"] == 1
     assert before["definition"] == after["definition"] and after["successes"] == 2
     assert before["validation_history"] == after["validation_history"]
+
+
+def test_edits_keep_only_changed_lines_and_separate_changes():
+    from musclememory.artifacts import patch_edits
+
+    patch = (
+        "*** Begin Patch\n*** Update File: app/money.py\n@@\n"
+        "-from decimal import Decimal\n+from decimal import Decimal\n \n def cents(value):\n"
+        "-    return int(float(value) * 100)\n+    return int(Decimal(value) * 100)\n"
+        "*** Update File: app/exports.py\n@@\n     for row in rows:\n"
+        "+        if row in seen:\n+            continue\n         amount = cents(row)\n"
+        "-        amount = abs(amount)\n+        amount = -abs(amount)\n*** End Patch\n"
+    )
+    assert patch_edits({"command": patch}, "filesystem.patch") == [
+        {
+            "file": "app/money.py",
+            "before": "    return int(float(value) * 100)",
+            "after": "    return int(Decimal(value) * 100)",
+        },
+        {"file": "app/exports.py", "after": "        if row in seen:\n            continue"},
+        {
+            "file": "app/exports.py",
+            "before": "        amount = abs(amount)",
+            "after": "        amount = -abs(amount)",
+        },
+    ]
+    # A Claude Code edit that repeats unchanged lines around the change.
+    edit = {
+        "file_path": "app/money.py",
+        "old_string": "def cents(value):\n    return 1",
+        "new_string": "def cents(value):\n    return 2",
+    }
+    assert patch_edits(edit, "filesystem.edit") == [
+        {"file": "app/money.py", "before": "    return 1", "after": "    return 2"}
+    ]
+    assert patch_edits({**edit, "new_string": edit["old_string"]}, "filesystem.edit") == []

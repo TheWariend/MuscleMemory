@@ -6,6 +6,7 @@ import re
 import httpx
 from pydantic import ValidationError
 
+from .artifacts import command_parts, inspection_only, test_command
 from .core import DomainError
 from .security import MASK, redact
 
@@ -46,20 +47,44 @@ def value_free(note):
     return re.sub(r"[\w./-]+\.[A-Za-z0-9]{1,8}\b", "a file", note)
 
 
+def what_worked(failed, later):
+    """The command that worked after a failed one: the next passing test for a failed
+    test, otherwise the next passing run of the same program."""
+    command = failed.arguments.get("command")
+    if not isinstance(command, str) or not (words := command_parts(command)):
+        return None
+    for event in later:
+        other = event.arguments.get("command")
+        if event.kind != "tool" or event.status != "success" or not isinstance(other, str):
+            continue
+        if test_command(command) and (tested := test_command(other)) and tested != command:
+            return tested
+        if not test_command(command) and command_parts(other)[:1] == words[:1] and other != command:
+            return other.strip().splitlines()[0][:90]
+    return None
+
+
 def derive_boundaries(definition, events, contrasts):
     conditions = [
         *("capability:" + cap for cap in definition.required_capabilities),
         *("permission:" + permission for permission in definition.required_permissions),
         *("environment:" + key for key in sorted(definition.environment_requirements)),
     ]
-    risk, avoidance, recovery = [], [], []
-    for event in events:
+    risk, avoidance, recovery, fixed = [], [], [], {}
+    for index, event in enumerate(events):
         if event.kind != "tool":
             continue
         step = describe(event.capability, event.arguments)
         if event.status == "failure":
             risk.append(f"An earlier attempt failed at {step}.")
-            avoidance.append(f"Before {step} again, check why it failed last time.")
+            failed = event.arguments.get("command")
+            if worked := what_worked(event, events[index + 1 :]):
+                # Failures fixed by the same command share one note, written below.
+                if worked not in fixed:
+                    avoidance.append(worked)
+                fixed.setdefault(worked, []).append(failed.strip().splitlines()[0][:90])
+            else:
+                avoidance.append(f"Before {step} again, check why it failed last time.")
         if event.exploratory and event.event_id not in definition.step_graph["nodes"]:
             avoidance.append(f"Skip the detour: {step} didn't help last time.")
         if (
@@ -68,10 +93,14 @@ def derive_boundaries(definition, events, contrasts):
             and event.event_id in definition.step_graph["nodes"]
         ):
             recovery.append(f"If {step} fails, retrying worked last time.")
-        if event.effect != "read":
+        if event.effect != "read" and not inspection_only(event.arguments, event.capability):
             risk.append(
                 f"{step[0].upper() + step[1:]} changes things; your agent still asks first."
             )
+    for position, note in enumerate(avoidance):
+        if note in fixed:
+            tried = " and ".join(f"`{command}`" for command in dict.fromkeys(fixed[note]))
+            avoidance[position] = f"{tried} failed here; `{note}` worked."
     critical = set()
     for contrast in contrasts:
         diff = contrast.step_diff

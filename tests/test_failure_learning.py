@@ -296,3 +296,47 @@ def test_relearning_deleted_procedure_reuses_immutable_contrast(service, princip
     with service.db.session() as session:
         assert session.scalar(select(func.count()).select_from(Contrast)) == 1
     assert rebuilt["validation_status"] == "provisional"
+
+
+def test_watch_out_names_the_command_that_worked():
+    from types import SimpleNamespace
+
+    from musclememory.boundaries import derive_boundaries
+    from musclememory.core import ExecutionEvent
+
+    def shell(sequence, command, status="success"):
+        return ExecutionEvent.model_validate(
+            {
+                "event_id": f"e{sequence}",
+                "sequence": sequence,
+                "kind": "tool",
+                "capability": "shell.execute",
+                "tool_name": "Bash",
+                "arguments": {"command": command},
+                "status": status,
+                "effect": "destructive",
+            }
+        )
+
+    events = [
+        shell(1, "sed -n '1,200p' app/exports.py"),
+        shell(2, "python3 -m unittest", "failure"),
+        shell(3, "python3 -m unittest discover", "failure"),
+        shell(4, "python3 -m unittest discover -s tests"),
+        shell(5, "make lint", "failure"),
+    ]
+    definition = SimpleNamespace(
+        required_capabilities=["shell.execute"],
+        required_permissions=[],
+        environment_requirements={},
+        step_graph={"nodes": ["e1", "e4"]},
+        steps=[],
+    )
+    derive_boundaries(definition, events, [])
+    assert definition.avoidance_rules == [
+        "`python3 -m unittest` and `python3 -m unittest discover` failed here; "
+        "`python3 -m unittest discover -s tests` worked.",
+        "Before running `make lint` again, check why it failed last time.",
+    ]
+    # Reading a file is not described as changing anything.
+    assert not any("sed -n" in cue and "changes things" in cue for cue in definition.risk_cues)

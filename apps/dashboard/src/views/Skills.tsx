@@ -195,7 +195,7 @@ function Summary({summary, successes}: {summary: SkillSummary; successes: number
     {summary.reads.length > 0 && <section className="summary-part">
       <h3>Looks at first</h3>
       <p className="file-list">{summary.reads.map(f => <code key={f} title={f}>{fileName(f)}</code>)}</p>
-      {summary.look_around_steps > 0 && <p className="look-note">Plus {summary.look_around_steps} look-around {summary.look_around_steps === 1 ? 'step' : 'steps'} (listing and reading files), not needed to repeat.</p>}
+      {summary.look_around_steps > 0 && <p className="look-note">The session took {summary.look_around_steps} {summary.look_around_steps === 1 ? 'step' : 'steps'} only to look around (listing and reading files). Your agent gets the files that mattered instead of repeating them.</p>}
     </section>}
     {summary.changes.length > 0 && <section className="summary-part">
       <h3>Changes</h3>
