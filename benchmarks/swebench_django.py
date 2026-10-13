@@ -12,14 +12,43 @@ whose FAIL_TO_PASS tests can't pass here is excluded.
 """
 
 import json
+import os
 import re
 import shutil
 import subprocess
 from pathlib import Path
 
-HOME = Path.home() / "Library/Application Support/MuscleMemory/realbench"
+# Where the Django clone, the Python environment and runs live (override with MM_BENCH_HOME).
+HOME = Path(os.getenv("MM_BENCH_HOME", str(Path.home() / ".musclememory-bench"))).expanduser()
 MIRROR = HOME / "django.git"
 PYTHON = HOME / "py311/bin/python"
+REQUIREMENTS = ["asgiref>=3.7,<4", "sqlparse>=0.3.1", "tzdata", "pytz"]
+
+
+def prepare_environment():
+    """A bare Django clone and a Python 3.11 environment with Django's test requirements."""
+    HOME.mkdir(parents=True, exist_ok=True)
+    if not MIRROR.exists():
+        print("Cloning Django (about 300 MB, once)…", flush=True)
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "--bare",
+                "--quiet",
+                "https://github.com/django/django.git",
+                str(MIRROR),
+            ],
+            check=True,
+        )
+    if not PYTHON.exists():
+        python = os.getenv("MM_BENCH_PYTHON") or shutil.which("python3.11")
+        if not python:
+            raise SystemExit("Python 3.11 is required: install it or set MM_BENCH_PYTHON.")
+        subprocess.run([python, "-m", "venv", str(HOME / "py311")], check=True)
+        subprocess.run([str(PYTHON), "-m", "pip", "install", "-q", *REQUIREMENTS], check=True)
+
+
 DATASET = "https://datasets-server.huggingface.co/rows?dataset=princeton-nlp/SWE-bench_Verified"
 STATUS = re.compile(
     r"^(.*?) \.\.\. (ok|FAIL|ERROR|skipped.*|expected failure|unexpected success)\s*$"

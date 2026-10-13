@@ -120,6 +120,16 @@ Those sessions are excluded from every number above.
 
 ## Reproduce
 
+The quickest checks need no model calls:
+
+```sh
+python benchmarks/reproduce.py check     # files untouched, totals recomputed
+python benchmarks/reproduce.py rejudge   # hidden tests rerun on every published patch
+python benchmarks/reproduce.py run       # the whole run again, with your own Codex
+```
+
+Or step by step:
+
 ```sh
 python benchmarks/swebench_django.py validate --group model-forms --out RUN/validation-1
 python benchmarks/evaluate_django.py --dir RUN setup --group model-forms --train 4
