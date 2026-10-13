@@ -1,5 +1,5 @@
 {
-  "name": "musclememory",
+  "name": "@thewariend/musclememory",
   "version": "0.1.0",
   "description": "TypeScript SDK for MuscleMemory, open-source procedural memory for AI agents.",
   "license": "Apache-2.0",

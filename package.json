@@ -6,7 +6,7 @@
   "workspaces": ["apps/dashboard", "packages/sdk-typescript"],
   "scripts": {
     "build": "npm run build --workspaces",
-    "test:sdk": "npm test --workspace musclememory"
+    "test:sdk": "npm test --workspace @thewariend/musclememory"
   }
 }
 

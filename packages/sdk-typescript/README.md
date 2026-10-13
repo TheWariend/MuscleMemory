@@ -1,11 +1,11 @@
-# musclememory
+# MuscleMemory
 
 TypeScript SDK for [MuscleMemory](https://thewariend.com/musclememory), open-source procedural
 memory for AI agents. When a task really succeeds, MuscleMemory remembers how it was done and
 hands that to the next agent facing a similar task.
 
 ```sh
-npm install musclememory
+npm install @thewariend/musclememory
 ```
 
 The SDK talks to a MuscleMemory server. Run one with the Python package:
@@ -23,7 +23,7 @@ removed before anything is stored.
 
 ```typescript
 import {readFile} from 'node:fs/promises';
-import {MuscleMemoryClient, ObservedRun} from 'musclememory';
+import {MuscleMemoryClient, ObservedRun} from '@thewariend/musclememory';
 
 const client = new MuscleMemoryClient('http://127.0.0.1:8080', process.env.MM_API_KEY!);
 const profile = {agent_name: 'my-agent', bindings: {'repository.inspect': 'read_file'}};
@@ -50,7 +50,7 @@ const recall = await client.musclememory_recall({
 if (!recall.no_match) console.log(recall.guidance); // the short note to add to your agent's prompt
 ```
 
-`musclememory/node` adds a durable on-disk capture journal for Node agents.
+`@thewariend/musclememory/node` adds a durable on-disk capture journal for Node agents.
 
 ## Links
 
