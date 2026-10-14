@@ -66,17 +66,27 @@ flowchart LR
     B -- yes --> D["Learn a skill or count a check"]
     D --> E["Two separate passing checks"]
     E --> F["You tap Keep"]
-    F --> G["Next similar task: a short note in the agent prompt"]
+    F --> H["Hook checks current files"]
+    H -->|"match or partial match"| G["Short note; warning on partial match"]
+    H -->|"mismatch"| I["No note; skip recorded locally"]
     G --> A
 ```
 
-- **Verified, twice.** A skill is trusted only after two separate sessions pass with it.
-  The session it was learned from doesn't count. One failed check pauses it.
+- **Verified, twice.** Two later sessions must match the skill's actions and pass its
+  own stored test command after the last code change. Pipes, redirects and shell
+  wrappers are normalized; parameterized commands keep shape matching. Automatic
+  checks use the final passing test, so an unrelated test cannot count. The training
+  session doesn't count. One failed check pauses the skill.
 - **Learns from failures.** Failed attempts become plain "watch out" and "if it goes wrong"
   notes, so the agent avoids the same dead ends.
 - **You stay in charge.** Automatically learned skills wait for your OK before any agent
   sees them. Agents still read the current files and ask for approval as usual.
   MuscleMemory never replays actions.
+- **Checks current files.** Native hooks require changed files to exist and at least
+  one stored before or after edit to match. If none match, they stay quiet; partial
+  matches include a warning that cannot be trimmed. Reads are bounded and reject
+  symlinks. File-check skips are recorded locally. Server and MCP recall have no file
+  access. [Exact rules](docs/how-it-works.md#checking-current-files-in-hooks).
 - **Quiet when it should be.** If nothing fits, nothing is added, and the agent pays no
   extra tokens.
 - **Shared between agents.** A skill learned with Codex is handed to Claude Code or
@@ -100,6 +110,10 @@ More detail in [How it works](https://github.com/TheWariend/MuscleMemory/blob/ma
 
 See [Integrations](https://github.com/TheWariend/MuscleMemory/blob/main/docs/integrations.md).
 
+Projects share skills within the same workspace (`namespace`, default `"default"`),
+rather than getting a separate workspace per repository. Cross-repository recall is
+untested. [Give a project its own namespace](docs/install.md#workspace-scope-and-project-isolation).
+
 ## Dashboard
 
 | | |
@@ -121,8 +135,8 @@ See [Integrations](https://github.com/TheWariend/MuscleMemory/blob/main/docs/int
 
 ## Status
 
-MuscleMemory works and is tested: 126 Python tests on SQLite and PostgreSQL, and 21
-TypeScript tests. It's early. The benchmarks cover repeat tasks on three controlled codebases,
+MuscleMemory has Python and TypeScript tests, with optional PostgreSQL and live Codex
+checks. It's early. The benchmarks cover repeat tasks on three controlled codebases,
 not every kind of work, and the Claude Code run is small. The hooks and CleanSlate learn on their own; with the SDKs your code
 reports when a task succeeded.
 See the [roadmap](https://github.com/TheWariend/MuscleMemory/blob/main/docs/roadmap.md).

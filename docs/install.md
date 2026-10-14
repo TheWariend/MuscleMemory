@@ -73,6 +73,67 @@ Then run the same `init`, `start` and `connect` steps as above.
 existing hook file it changes. Details for each client are in
 [integrations.md](integrations.md).
 
+## Workspace scope and project isolation
+
+The workspace is the config key `namespace`, default `"default"`. It groups skills,
+checks, approval state and sessions within one tenant on the same server. Projects
+using the default setup share that workspace; a repository root is not a recall
+boundary. Cross-repository recall is untested, even when the local file check finds
+matching paths and text.
+
+`musclememory connect` uses `~/.musclememory/hooks/<agent>.json`, shared by every
+project connected with that agent. For a project-specific namespace on the same
+server:
+
+1. Create a key for the new workspace in your existing local setup:
+
+   ```sh
+   musclememory key --namespace my-project --label my-project-codex --permissions read,write
+   ```
+
+   Store the returned `api_key` as `MM_API_KEY=<key>` in a private env file outside
+   the repository. Set its permissions to 0600. The key's namespace grant must
+   match the hook config.
+2. Create a dedicated hook JSON file outside the repository. Use real absolute
+   paths for `env_file` and `state_dir`:
+
+   ```json
+   {
+     "url": "http://127.0.0.1:8080",
+     "namespace": "my-project",
+     "env_file": "/absolute/private/path/my-project-codex.env",
+     "state_dir": "/absolute/private/path/my-project-codex-state"
+   }
+   ```
+
+   Keep the config private and give the queue directory permissions 0700 if you
+   create it yourself. The hooks create it privately when it does not exist.
+3. For a project without existing MuscleMemory hooks, install with that config:
+
+   ```sh
+   musclememory hooks install --client codex --project /path/to/project \
+     --config /absolute/private/path/my-project-codex.json
+   ```
+
+   For an already connected project, change the existing MuscleMemory hook
+   commands' `--config` path to the dedicated file. The installer preserves
+   existing commands, so installing another set would run both workspaces.
+   Restart the agent. Use the matching `--client claude` or `--client cursor`
+   for those clients, with a dedicated key and config for each.
+
+Changing the shared agent config changes all projects referencing it. Existing
+skills remain in their original namespace; choosing another namespace does not
+move them. SDK and MCP requests choose the workspace using `visibility_scope`.
+The global `init --namespace` option sets the initial local workspace, and is not
+a per-project switch for an existing setup.
+
+Native hooks also check current files before delivery: all changed files must
+exist, and at least one stored edit must match its before or after text. Partial
+matches carry an untrimmed warning; complete mismatches inject nothing. Reads
+are bounded to 32 files and 1 MiB per file, without following symlinks. File-check
+skip reasons stay in the local queue. Server and MCP recall do not inspect files.
+See [the exact rules](how-it-works.md#checking-current-files-in-hooks).
+
 ## Dashboard sign-in
 
 - **On this computer:** `musclememory dashboard` makes a one-time link and opens
@@ -145,8 +206,9 @@ SELECT/INSERT/UPDATE/DELETE. Each process uses up to 15 database connections.
 | `MM_DEPLOYMENT_MODE` | `local` | `local` or `hosted` |
 | `MM_PUBLIC_URL` | none | Root HTTPS URL, required in hosted mode |
 
-Remote endpoints must use HTTPS without credentials in the URL. Hook settings can
-also read `MM_API_URL` and `MM_NAMESPACE`.
+Remote endpoints must use HTTPS without credentials in the URL. `MM_API_URL` can
+override the hook endpoint. Hook workspace selection uses the JSON `namespace`
+field, defaulting to `"default"`; `MM_NAMESPACE` does not override that field.
 
 ## Upgrading
 

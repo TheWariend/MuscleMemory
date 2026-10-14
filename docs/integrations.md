@@ -73,8 +73,10 @@ see [its setup](../integrations/cleanslate/README.md).
 
 - **Tests passed after the last change, and the capture is complete:** the session
   counts as verified.
-  - If it changed the same files as an existing skill and repeats its steps, it
-    counts as one of that skill's checks.
+  - If its actions match an existing skill and its final passing test matches the
+    skill's stored test command, it counts as one check. Commands are compared after
+    normalizing pipes, redirects and shell wrappers; parameterized commands keep
+    argument-shape matching. An unrelated final test does not count.
   - Otherwise MuscleMemory learns a new skill from it.
 - **Tests failed, no test ran, or the capture has gaps:** nothing is learned.
 
@@ -87,6 +89,13 @@ A skill reaches agents only when both are true:
 
 One failed check pauses a skill until it is relearned. Turning a skill off or
 deleting it in the dashboard stops it reaching agents right away.
+
+Native hooks also check the current project before delivery: every changed file
+must exist, and at least one stored edit must match its before or after text.
+Complete mismatches stay quiet; partial matches carry an untrimmed warning.
+File-check skips are recorded locally. Server, MCP, SDK and CleanSlate recall do
+not run this probe. See [the exact file-check rules](how-it-works.md#checking-current-files-in-hooks)
+and [workspace isolation](install.md#workspace-scope-and-project-isolation).
 
 Set `"auto_learn": false` in `~/.musclememory/hooks/<agent>.json` to capture
 without learning, or `"recall_enabled": false` to capture without injecting memory.

@@ -126,9 +126,13 @@ sees the task in the words of whoever asked for it.
 
 ## 6. The trust lifecycle
 
-A new skill is *provisional*. A later passing session that changed the same files
-counts as one independent check, whichever agent ran it and whichever tool made the
-change. The original agent's read-only commands (`cat`, `sed -n`, `grep`, `git diff`)
+A new skill is *provisional*. A later session counts as an independent check when
+its actions match the skill and its completion evidence passes the stored test
+command after the last code change. Test commands are compared exactly after
+normalizing pipes, redirects and shell wrappers. Automatic checks use the final
+passing test; an unrelated final test does not count. Parameterized commands retain
+argument-shape matching. Equivalent edit, patch and write tools can supply change
+evidence across agents. Read-only shell commands (`cat`, `sed -n`, `grep`, `git diff`)
 need not be repeated. When a hook injected a skill into a session, that
 session's result is attributed to the injected skill first. A skill becomes **ready**
 only when all of these hold:
@@ -188,15 +192,26 @@ everything and therefore say nothing.
 ## 9. Delivery
 
 At the start of a session (for Cursor, at its first tool result) the hook asks for the
-best match and adds one pointer to the agent's prompt: compact JSON capped at 350
+best match, checks its current files locally, and adds a pointer when that check
+allows delivery: compact JSON capped at 350
 tokens. It contains the title, the files to change, the test command, up to four
 before-and-after snippets of the key edits from the passing run, the files to read first,
 preconditions, one watch-out note, the permissions the skill needs, and a notice that the
 result is untrusted: the agent must check the current files and keep its normal approvals.
 When the pointer is too long, whole optional fields are dropped first, then edit snippets;
 code is never cut mid-string. If the essentials still don't fit, nothing is added. A session receives the same skill at most
-once and at most two pointers in total. The full skill is available on request through
+once per revision and at most two pointers in total. The full skill is available on request through
 `musclememory_inspect`.
+
+Every changed file must exist as a regular file within the project, and at least
+one stored edit must match its literal before or after text. No matches means no
+pointer; partial matches carry an untrimmed warning naming the mismatched files.
+The check follows no symlinks, opens at most 32 files and rejects files over 1 MiB.
+File-changing skills without literal edit snippets also skip. It runs no commands
+or model calls and sends no current file contents; skip reasons stay in the local
+queue. Hooks deliver only the checked candidate. Server and MCP recall have no
+project file access. Skills are scoped by tenant and namespace, default `"default"`,
+so projects in that workspace share them. Cross-repository recall is untested.
 
 A pointer is short on purpose. It tells the agent where to look, what changed last time
 and how to prove the result. It is a hint to check against the current code, not a
@@ -410,13 +425,12 @@ SIGIR 2009), MiniLM sentence embeddings
 
 ## 16. Future work
 
-1. **Check before handing over.** Run cheap read-only probes (does this file or function
-   exist here?) before injecting a skill, and stay quiet on a clear mismatch.
-2. **Recall from errors.** When a command fails, look up recovery notes for that exact
-   error signature, using only fixes that a later passing run confirmed.
-3. **Learn which skills help.** Record every inject or skip decision, measure the token
-   and success difference per skill, and retire skills that do not help.
-4. Automatic learning for custom SDK agents, a disconnect command, a larger Claude
+1. **Recall from errors.** Match exact error signatures to standalone warnings from
+   confirmed fixes and approved sources. This is [design-only](error-recall-design.md):
+   existing prose notes lack per-note confirmation evidence.
+2. **Learn which skills help.** Use recorded injections and file-check skips, complete
+   other decision coverage, and measure token and success differences per skill.
+3. Automatic learning for custom SDK agents, a disconnect command, a larger Claude
    Code benchmark with skills learned by Claude Code itself, and scale results for
    100,000 skills.
 

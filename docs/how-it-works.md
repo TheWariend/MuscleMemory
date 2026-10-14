@@ -18,7 +18,9 @@ flowchart LR
     F --> H{"Two passing checks and kept?"}
     G --> H
     H -- yes --> I["Ready"]
-    I -->|"once per session"| J["Compact pointer in the next agent prompt"]
+    I --> K{"Local hook file check allows delivery?"}
+    K -- yes --> J["Compact pointer, with a warning on partial match"]
+    K -- no --> L["Skip recorded locally; no pointer"]
 ```
 
 1. **Capture.** Hooks for Claude Code, Codex and Cursor, the CleanSlate host
@@ -31,10 +33,17 @@ flowchart LR
    which files differ from version control before and after it). If any tool
    call is missing from the capture, or no test ran after the last change, the
    session teaches nothing.
-3. **Learn or check.** A passing session that changed the same files as a skill
-   counts as one independent check for that skill, whichever agent ran it and
-   whichever tool made the change. The original agent's read-only commands
-   (`cat`, `sed -n`, `grep`, `git diff`) need not be repeated.
+3. **Learn or check.** A later passing session counts as one independent check
+   when its observed actions match the skill and its completion evidence passes
+   the skill's own stored test after the last code change. Both test commands are
+   normalized with `artifacts.test_command`: pipes, redirects and shell wrappers
+   are removed before exact comparison. An unrelated passing test does not count.
+   Automatic checks use the final passing test as evidence, so running the stored
+   test and then a different test does not check that skill. Commands explicitly
+   stored as `$mm_parameter` retain argument-shape matching.
+   Equivalent edit, patch or write tools can supply file-change evidence across
+   agents. The original agent's read-only shell commands (`cat`, `sed -n`, `grep`,
+   `git diff`) need not be repeated.
    Otherwise MuscleMemory compiles a new skill from it. The session a skill was
    learned from can never count as one of its checks.
 4. **Approve.** Skills learned automatically wait for a person's OK. In the
@@ -48,9 +57,28 @@ flowchart LR
    skill learned with one agent is handed to the others; every other tool must
    match exactly.
 6. **Recall.** At the start of a session (Cursor: at its first tool result) the
-   hook asks for the best match and adds one compact pointer to the agent's
-   prompt. A session gets the same skill at most once and at most two pointers in
-   total. When nothing fits, MuscleMemory adds nothing.
+   hook asks for the best match, checks its current files locally, and adds a
+   compact pointer when the check allows delivery. A session gets the same skill
+   revision at most once and at most two pointers in total. When nothing fits or
+   the files no longer match, MuscleMemory adds nothing.
+
+## Workspace scope
+
+Skills are grouped by tenant and workspace (`namespace`), rather than repository.
+The hook config's `namespace` defaults to `"default"`; `musclememory init` also
+uses that default, and `connect` copies it into the shared config for each agent.
+Projects connected to the same server, tenant and namespace share skills, their
+checks and approval state, and recorded sessions. Repository roots make captured
+paths relative and drive the local file check; they do not partition server recall.
+
+To give a project its own workspace, use a dedicated hook JSON config with a
+distinct `namespace`, an API key granting access to that namespace, and a private
+queue directory. Point only that project's hooks at the dedicated config; changing
+the shared `hooks/<agent>.json` affects every project using it. SDK and MCP clients
+choose the same workspace through `visibility_scope`.
+See [project workspace setup](install.md#workspace-scope-and-project-isolation).
+Cross-repository recall is untested. A coinciding path or matching text does not
+establish that a skill is appropriate for another repository.
 
 ## What a skill stores
 
@@ -105,6 +133,9 @@ do not perform it. An agent must still inspect the current files and adapt.
   which steps only the working run had, which only the failed run had, and
   which were called differently. These become watch-out and recovery notes, and
   steps unique to the working run are marked critical.
+- **Notes before trust are not shipped.** Notes reach agents with eligible,
+  approved skills. Exact error lookup needs separate confirmation evidence;
+  see the [error-warning design note](error-recall-design.md).
 - **One failed check flags a skill.** If a later check fails, the skill is
   flagged and stops reaching agents until a new revision is learned and checked.
 - **Optional refinement.** If you set `MM_BOUNDARY_LLM_URL`, the notes can be
@@ -167,7 +198,8 @@ stopped server and is delivered later with `musclememory hooks flush`.
   the migrations; `musclememory migrate` adds one for the configured dimension).
   Keyword candidates come from PostgreSQL full-text search.
 - Migrations are explicit: run `musclememory migrate`. Recorded sessions expire
-  after 30 days by default; skills and their evidence stay until you delete them.
+  after 30 days by default; purge removes their traces. Skills and evaluation
+  records remain until deleted, but original trace events may no longer be available.
 
 ## Security
 
