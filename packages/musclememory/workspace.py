@@ -36,19 +36,16 @@ def project_root(cwd):
     """The git work tree containing ``cwd``, else ``cwd``; ``(None, False)`` when unusable."""
     if not isinstance(cwd, str) or not os.path.isdir(cwd):
         return None, False
-    try:
-        found = subprocess.run(
-            ["git", "-C", cwd, "rev-parse", "--show-toplevel"],
-            capture_output=True,
-            text=True,
-            timeout=3,
-            env=GIT_ENVIRONMENT,
-        )
-        if found.returncode == 0 and found.stdout.strip():
-            return os.path.realpath(found.stdout.strip()), True
-    except (OSError, subprocess.SubprocessError):
-        pass
-    return os.path.realpath(cwd), False
+    root = current = os.path.realpath(cwd)
+    while True:
+        if os.path.isfile(os.path.join(current, ".git")) or os.path.isdir(
+            os.path.join(current, ".git")
+        ):
+            return current, True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return root, False
+        current = parent
 
 
 def ignored(path):

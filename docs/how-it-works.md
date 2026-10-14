@@ -72,6 +72,31 @@ the permissions needed and a notice that the agent must check the current files 
 keep its normal approvals. When it is too long, whole optional fields and then edit
 snippets are dropped; code is never cut mid-string. The full skill is available through `musclememory_inspect`.
 
+## Checking current files in hooks
+
+Before delivering its top candidate, a native hook checks the current project on
+your machine. The root is the nearest parent with a `.git` directory or worktree
+file, or the hook's `cwd` outside Git. Captured paths are normalized and normally
+relative to that root; absolute paths must still be inside it.
+
+For a skill that changes files, every changed file must exist as a regular file,
+and at least one stored edit must match its literal `before` or `after` text. If
+no edit matches, the hook stays quiet. Partial matches carry a `warning` field:
+"files changed since this skill was learned: <files>". The renderer never trims
+that warning; if essential context cannot fit the token budget, it injects nothing.
+
+The check follows no symlinks, opens at most 32 files, and rejects files larger
+than 1 MiB. Missing roots, unreadable files, unsafe paths and other errors skip
+delivery. Skills that change files without stored literal edits also skip; skills
+with no changed files keep their existing delivery behavior. Hook delivery includes
+only the checked candidate, rather than a plan containing unchecked skills.
+Skip reasons are kept in the private local queue's `skips` table, alongside
+`injections`, and purged with their runs. File contents stay on your machine.
+
+This check makes no model calls and runs no commands. It runs in the hooks;
+server-side recall and MCP `musclememory_recall` have no project file access and
+do not perform it. An agent must still inspect the current files and adapt.
+
 ## Learning from failures
 
 - **Failure contrasts.** When a skill is learned, MuscleMemory looks for failed

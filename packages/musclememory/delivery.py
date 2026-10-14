@@ -29,7 +29,9 @@ def render_pointer(result, budget=350):
         len(plan["steps"]) > 1
         or any(gap["reason"] != "ineligible_procedure" for gap in plan["gaps"])
     ):
-        return render_plan(plan, budget, result.get("inspection_available", True))
+        return render_plan(
+            plan, budget, result.get("inspection_available", True), result.get("file_warning")
+        )
     if not result.get("candidates"):
         return ""
     candidate = result["candidates"][0]
@@ -53,6 +55,8 @@ def render_pointer(result, budget=350):
     }
     if result.get("inspection_available", True):
         pointer["inspect"] = "musclememory_inspect"
+    if result.get("file_warning"):
+        pointer["warning"] = result["file_warning"]
     if result.get("related_procedures"):
         pointer["related"] = [
             {
@@ -102,7 +106,7 @@ def render_pointer(result, budget=350):
                 pointer[field].pop()
             else:
                 del pointer[field]
-    # Permission lists and the notice are essential. With unusually large
+    # Permission lists, file warnings and the notice are essential. With unusually large
     # essential context abstain, rather than deliver an incomplete warning.
     text = serialize()
     useful = any(
@@ -112,7 +116,7 @@ def render_pointer(result, budget=350):
     return text if useful and token_count(text) <= budget else ""
 
 
-def render_plan(plan, budget, inspection_available):
+def render_plan(plan, budget, inspection_available, file_warning=None):
     pointer = {
         "notice": NOTICE,
         "complete": plan["complete"],
@@ -134,6 +138,8 @@ def render_plan(plan, budget, inspection_available):
     }
     if inspection_available:
         pointer["inspect"] = "musclememory_inspect per procedure"
+    if file_warning:
+        pointer["warning"] = file_warning
 
     def serialize():
         return json.dumps(pointer, ensure_ascii=False, separators=(",", ":"))

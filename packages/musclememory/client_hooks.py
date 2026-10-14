@@ -164,6 +164,10 @@ class HookQueue:
                 identity TEXT NOT NULL, session TEXT NOT NULL, procedure TEXT NOT NULL,
                 version INTEGER NOT NULL, context_hash TEXT NOT NULL, tokens INTEGER NOT NULL,
                 PRIMARY KEY(identity,session,procedure,version));
+            CREATE TABLE IF NOT EXISTS skips (
+                identity TEXT NOT NULL, run TEXT NOT NULL, procedure TEXT NOT NULL,
+                version INTEGER NOT NULL, reason TEXT NOT NULL, created REAL NOT NULL,
+                PRIMARY KEY(identity,run,procedure,version));
             CREATE TABLE IF NOT EXISTS reconciliations (
                 identity TEXT NOT NULL, run TEXT NOT NULL, derived TEXT NOT NULL,
                 fingerprint TEXT NOT NULL, events TEXT NOT NULL,
@@ -614,8 +618,9 @@ class HookQueue:
             )
         ]
 
-    def recall_once(self, client, token, intent, profile, scope, budget):
+    def recall_once(self, client, token, intent, profile, scope, budget, cwd):
         from .delivery import token_count
+        from .hook_files import check_files
 
         with self.transaction():
             run = self.db.execute(
@@ -652,8 +657,19 @@ class HookQueue:
                 ),
             ).fetchone():
                 return ""
+            reason, changed = check_files(candidate["definition"], cwd)
+            # Hooks deliver only the candidate checked here, not an unchecked plan.
+            result = {**result, "plan": None, "related_procedures": []}
+            if changed:
+                result["file_warning"] = "files changed since this skill was learned: " + ", ".join(
+                    changed
+                )
+            if reason:
+                self.record_skip(run, candidate, reason)
+                return ""
             context = render_pointer(result, budget)
             if not context:
+                self.record_skip(run, candidate, "pointer_budget")
                 return ""
             self.db.execute(
                 "INSERT INTO injections VALUES (?,?,?,?,?,?)",
@@ -667,6 +683,19 @@ class HookQueue:
                 ),
             )
             return context
+
+    def record_skip(self, run, candidate, reason):
+        self.db.execute(
+            "INSERT OR REPLACE INTO skips VALUES (?,?,?,?,?,?)",
+            (
+                self.identity,
+                run["token"],
+                candidate["procedure_token"],
+                candidate["procedure_version"],
+                reason,
+                time.time(),
+            ),
+        )
 
     def reconcile(self, client, token, messages, succeeded, usage_details=None):
         """CLI receipts establish tool outcomes; task success remains externally verified."""
@@ -847,19 +876,22 @@ def run_hook(config_path, client_name, payload):
         recall_enabled = config.get("recall_enabled", True)
         if stage == "prompt" and client_name != "cursor" and recall_enabled:
             try:
-                output = {
-                    "hookSpecificOutput": {
-                        "hookEventName": "UserPromptSubmit",
-                        "additionalContext": queue.recall_once(
-                            client,
-                            token,
-                            payload["prompt"],
-                            profile,
-                            config.get("namespace", "default"),
-                            config.get("guidance_token_budget", 350),
-                        ),
+                context = queue.recall_once(
+                    client,
+                    token,
+                    payload["prompt"],
+                    profile,
+                    config.get("namespace", "default"),
+                    config.get("guidance_token_budget", 350),
+                    payload.get("cwd"),
+                )
+                if context:
+                    output = {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": context,
+                        }
                     }
-                }
             except Exception:
                 pass
         # Cursor prompt hooks have no documented context output. Inject through
@@ -875,16 +907,17 @@ def run_hook(config_path, client_name, payload):
                             "SELECT payload FROM events WHERE run=? AND sequence=0", (token,)
                         ).fetchone()[0]
                     )["intent_text"]
-                    output = {
-                        "additional_context": queue.recall_once(
-                            client,
-                            token,
-                            intent,
-                            profile,
-                            config.get("namespace", "default"),
-                            config.get("guidance_token_budget", 350),
-                        )
-                    }
+                    context = queue.recall_once(
+                        client,
+                        token,
+                        intent,
+                        profile,
+                        config.get("namespace", "default"),
+                        config.get("guidance_token_budget", 350),
+                        payload.get("cwd"),
+                    )
+                    if context:
+                        output = {"additional_context": context}
                 except Exception:
                     pass
         return output
@@ -1052,6 +1085,9 @@ def hooks_command(arguments):
                 for token in tokens:
                     queue.db.execute("DELETE FROM active WHERE run=?", (token,))
                     queue.db.execute("DELETE FROM events WHERE run=?", (token,))
+                    queue.db.execute(
+                        "DELETE FROM skips WHERE identity=? AND run=?", (queue.identity, token)
+                    )
                     queue.db.execute("DELETE FROM runs WHERE token=?", (token,))
             print(json.dumps({"purged_runs": len(tokens)}))
     finally:
