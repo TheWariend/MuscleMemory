@@ -75,6 +75,13 @@ def test_command(command):
     """Just the test run inside a longer shell command: no pipes, redirects or scripts."""
     if not isinstance(command, str) or redact(command) != command:
         return None
+    try:
+        words = shlex.split(command)
+    except ValueError:
+        return None
+    if len(words) >= 3 and posixpath.basename(words[0]) in {"sh", "bash", "zsh"}:
+        if words[-2] in {"-c", "-lc"}:
+            command = words[-1]
     for piece in reversed(re.split(r"&&|\|\||;|\||\n", command)):
         words = command_parts(piece)
         if not any(posixpath.basename(word) in TESTERS or word in TEST_WORDS for word in words):

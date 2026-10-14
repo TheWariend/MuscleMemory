@@ -722,11 +722,23 @@ class MemoryService:
                     )
                 from .artifacts import (
                     WORKSPACE_CHANGES,
+                    documentation_only,
                     inspection_only,
                     operation_categories,
                     targets,
+                    test_command,
                 )
 
+                last_change = max(
+                    (
+                        event.sequence
+                        for event in events
+                        if event.kind == "tool"
+                        and changed_files(event)
+                        and not documentation_only(event.arguments, event.effect, event.capability)
+                    ),
+                    default=-1,
+                )
                 # Check actual observed action shape and operation categories;
                 # a shell capability alone cannot prove a test or edit happened.
                 for step in revision.definition["steps"]:
@@ -757,6 +769,19 @@ class MemoryService:
                             operation_categories(event.arguments, event.capability)
                         )
                     ]
+                    command = step["arguments"].get("command")
+                    if "verify" in operations and not (
+                        isinstance(command, dict) and set(command) == {"$mm_parameter"}
+                    ):
+                        stored_test = test_command(command)
+                        matches = [
+                            event
+                            for event in matches
+                            if stored_test
+                            and test_command(event.arguments.get("command")) == stored_test
+                            and event.event_id in request.outcome_report.evidence_event_ids
+                            and event.sequence >= last_change
+                        ]
                     if not matches and step["capability"] in FILE_CHANGE:
                         # Another agent's tool: the same files changed is the same step.
                         wanted = set(
