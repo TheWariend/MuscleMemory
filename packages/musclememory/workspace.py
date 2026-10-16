@@ -10,7 +10,7 @@ import os
 import re
 import subprocess
 
-from .artifacts import TEST_WORDS, TESTERS
+from .artifacts import test_run
 
 IGNORED_DIRECTORIES = {
     ".git",
@@ -164,8 +164,7 @@ PASSED = re.compile(
 def piped_test(words, command):
     """A test runner whose output is piped on, so the exit status belongs to another program."""
     for index, word in enumerate(words):
-        name = os.path.basename(word)
-        if name in TESTERS or word in TEST_WORDS:
+        if test_run(words[index:]):
             return any(PIPED.search(later) for later in words[index + 1 :]) or bool(
                 PIPED.search(command.split(word, 1)[-1])
             )

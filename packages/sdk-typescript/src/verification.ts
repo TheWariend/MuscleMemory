@@ -4,32 +4,92 @@ import type {ExecutionEvent} from './contracts.js';
 /** Added to a terminal step: project files that command changed. */
 export const WORKSPACE_CHANGES = '$mm_workspace_changes';
 
-const TESTERS = new Set(['pytest', 'unittest', 'jest', 'vitest', 'cargo', 'go', 'runtests.py', 'tox', 'nox']);
-const TEST_WORDS = new Set(['test', 'tests', 'check', 'unittest', 'unittest.discover']);
+// Programs that only run tests, and tools that run tests with one of these subcommands.
+const TEST_RUNNERS = new Set(['pytest', 'py.test', 'jest', 'vitest', 'mocha', 'ava', 'tox', 'nox', 'rspec',
+  'phpunit', 'runtests.py', 'ctest']);
+const TEST_SUBCOMMANDS: Record<string, string[]> = {
+  cargo: ['test', 'nextest'], go: ['test'], npm: ['test', 't'], pnpm: ['test', 't'], yarn: ['test'],
+  bun: ['test'], deno: ['test'], make: ['test', 'tests', 'check'], mvn: ['test', 'verify'],
+  gradle: ['test'], gradlew: ['test'], dotnet: ['test'], mix: ['test'], swift: ['test'],
+  rake: ['test', 'spec'], flutter: ['test'], dart: ['test'],
+};
+const PYTHON_TEST_MODULES = new Set(['pytest', 'unittest', 'tox', 'nox']);
+// Prefixes that run the next program: `uv run pytest`, `npx jest`, `timeout 60 go test`.
+const LAUNCHERS: Record<string, string[] | null> = {
+  uv: ['run'], poetry: ['run'], pipenv: ['run'], pdm: ['run'], hatch: ['run'], bundle: ['exec'],
+  pnpm: ['exec', 'dlx'], yarn: ['exec', 'dlx'], npx: null, bunx: null, env: null, time: null,
+  timeout: null, nice: null, 'xvfb-run': null,
+};
 const FILE_CHANGE = new Set(['filesystem.edit', 'filesystem.write', 'filesystem.patch',
   'filesystem.replace_multiple', 'filesystem.create_multiple']);
 const FAILED = /^FAILED \(|^FAIL[: \t]|\b\d+ failed\b|\b\d+ errors?\b|test result: FAILED|^Tests:.*\bfailed\b/m;
 const PASSED = /^OK(?: \(.*\))?\s*$|\b\d+ passed\b|test result: ok\b|^ok\s|^Tests:\s+\d+ passed/m;
 
 function words(command: string): string[] {
-  return command.split(/\s+|&&|\|\||;|\|/).map(word => word.replace(/^['"]|['"]$/g, '')).filter(Boolean);
+  return command.split(/\s+/).map(word => word.replace(/^['"]|['"]$/g, '')).filter(Boolean);
 }
 
 function basename(word: string): string {
   return word.split('/').pop() ?? word;
 }
 
+/** `bash -lc '...'` runs the quoted command. */
+function unwrapShell(command: string): string {
+  const match = /^\s*(?:\S*\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1\s*$/.exec(command);
+  return match ? match[2] : command;
+}
+
+/** Each command in a line, split into its pipeline stages. */
+function pipelines(command: string): string[][] {
+  return unwrapShell(command).split(/&&|\|\||;|\n/)
+    .map(part => part.split(/(?<!\|)\|(?!\|)/).filter(stage => stage.trim()));
+}
+
+/** True when one command runs a test suite, not when it only mentions tests. */
+export function testRun(stage: string): boolean {
+  let parts = words(stage);
+  while (parts.length) {
+    const name = basename(parts[0]);
+    const launcher = LAUNCHERS[name];
+    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(parts[0])) {
+      parts = parts.slice(1);
+    } else if (launcher === null) {
+      parts = parts.slice(1);
+      while (parts.length && parts[0].startsWith('-')) parts = parts.slice(1);
+      if (name === 'timeout' && parts.length) parts = parts.slice(1);  // the duration
+    } else if (launcher && parts.length > 1 && launcher.includes(parts[1])) {
+      parts = parts.slice(2);
+    } else {
+      break;
+    }
+  }
+  if (!parts.length) return false;
+  const name = basename(parts[0]);
+  let rest = parts.slice(1);
+  if (TEST_RUNNERS.has(name)) return true;
+  if (/^python[\d.]*$/.test(name)) {
+    while (rest.length && rest[0].startsWith('-') && rest[0] !== '-m') rest = rest.slice(1);
+    if (rest[0] === '-m') return rest.length > 1 && PYTHON_TEST_MODULES.has(rest[1]);
+    const script = rest.length ? basename(rest[0]) : '';
+    return TEST_RUNNERS.has(script) || (script === 'manage.py' && rest[1] === 'test');
+  }
+  const subcommands = TEST_SUBCOMMANDS[name];
+  if (!rest.length || !subcommands) return false;
+  if (subcommands.includes(rest[0])) return true;
+  // `npm run test`, `pnpm run test:unit`
+  return ['npm', 'pnpm', 'yarn', 'bun'].includes(name) && rest[0] === 'run' && rest.length > 1
+    && (rest[1] === 'test' || rest[1].startsWith('test:'));
+}
+
 export function isTestCommand(command: unknown): boolean {
   if (typeof command !== 'string') return false;
-  return words(command).some(word => TESTERS.has(basename(word)) || TEST_WORDS.has(word));
+  return pipelines(command).some(stages => stages.some(testRun));
 }
 
 /** `tests | tail` exits with tail's status, so the runner's own summary decides. */
 export function pipedTest(command: unknown): boolean {
-  if (typeof command !== 'string' || !isTestCommand(command)) return false;
-  const runner = words(command).findIndex(word => TESTERS.has(basename(word)) || TEST_WORDS.has(word));
-  const after = command.slice(command.indexOf(words(command)[runner]));
-  return /(?<!\|)\|(?!\|)/.test(after);
+  if (typeof command !== 'string') return false;
+  return pipelines(command).some(stages => stages.slice(0, -1).some(testRun));
 }
 
 /** True/false from the runner's own summary line, undefined when it can't be told. */

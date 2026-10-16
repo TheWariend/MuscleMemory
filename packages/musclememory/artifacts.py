@@ -14,8 +14,67 @@ from .security import MASK, redact
 WORKSPACE_CHANGES = "$mm_workspace_changes"
 PATH_KEYS = {"path", "file_path", "filename", "file", "target", "output_path"}
 READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc"}
-TESTERS = {"pytest", "unittest", "jest", "vitest", "cargo", "go", "runtests.py", "tox", "nox"}
-TEST_WORDS = {"test", "tests", "check", "unittest", "unittest.discover"}
+# Programs that only run tests, and tools that run tests with one of these subcommands.
+TEST_RUNNERS = {
+    "pytest", "py.test", "jest", "vitest", "mocha", "ava", "tox", "nox", "rspec", "phpunit",
+    "runtests.py", "ctest",
+}  # fmt: skip
+TEST_SUBCOMMANDS = {
+    "cargo": {"test", "nextest"}, "go": {"test"}, "npm": {"test", "t"}, "pnpm": {"test", "t"},
+    "yarn": {"test"}, "bun": {"test"}, "deno": {"test"}, "make": {"test", "tests", "check"},
+    "mvn": {"test", "verify"}, "gradle": {"test"}, "gradlew": {"test"}, "dotnet": {"test"},
+    "mix": {"test"}, "swift": {"test"}, "rake": {"test", "spec"}, "flutter": {"test"},
+    "dart": {"test"},
+}  # fmt: skip
+PYTHON_TEST_MODULES = {"pytest", "unittest", "tox", "nox"}
+# Prefixes that run the next program: `uv run pytest`, `npx jest`, `timeout 60 go test`.
+LAUNCHERS = {
+    "uv": {"run"}, "poetry": {"run"}, "pipenv": {"run"}, "pdm": {"run"}, "hatch": {"run"},
+    "bundle": {"exec"}, "pnpm": {"exec", "dlx"}, "yarn": {"exec", "dlx"}, "npx": None,
+    "bunx": None, "env": None, "time": None, "timeout": None, "nice": None, "xvfb-run": None,
+}  # fmt: skip
+
+
+def test_run(words):
+    """True when one command runs a test suite, not when it only mentions tests."""
+    words = list(words)
+    while words:
+        name = posixpath.basename(words[0])
+        if re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):  # FOO=1 pytest
+            words = words[1:]
+        elif name in LAUNCHERS and LAUNCHERS[name] is None:
+            words = words[1:]
+            while words and words[0].startswith("-"):
+                words = words[1:]
+            if name == "timeout" and words:
+                words = words[1:]  # the duration
+        elif name in LAUNCHERS and words[1:2] and words[1] in LAUNCHERS[name]:
+            words = words[2:]
+        else:
+            break
+    if not words:
+        return False
+    name, rest = posixpath.basename(words[0]), words[1:]
+    if name in TEST_RUNNERS:
+        return True
+    if re.fullmatch(r"python[\d.]*", name):
+        while rest and rest[0].startswith("-") and rest[0] != "-m":
+            rest = rest[1:]
+        if rest[:1] == ["-m"]:
+            return len(rest) > 1 and rest[1] in PYTHON_TEST_MODULES
+        script = posixpath.basename(rest[0]) if rest else ""
+        return script in TEST_RUNNERS or (script == "manage.py" and rest[1:2] == ["test"])
+    if not rest or name not in TEST_SUBCOMMANDS:
+        return False
+    if rest[0] in TEST_SUBCOMMANDS[name]:
+        return True
+    # `npm run test`, `pnpm run test:unit`
+    return (
+        name in {"npm", "pnpm", "yarn", "bun"}
+        and rest[0] == "run"
+        and len(rest) > 1
+        and (rest[1] == "test" or rest[1].startswith("test:"))
+    )
 
 
 def normalized_path(value):
@@ -84,7 +143,7 @@ def test_command(command):
             command = words[-1]
     for piece in reversed(re.split(r"&&|\|\||;|\||\n", command)):
         words = command_parts(piece)
-        if not any(posixpath.basename(word) in TESTERS or word in TEST_WORDS for word in words):
+        if not test_run(words):
             continue
         kept, skip = [], False
         for word in words:
@@ -132,14 +191,14 @@ def operation_categories(arguments, capability=""):
         name = posixpath.basename(word)
         if name in READERS:
             operations.add("inspect")
-        if name in TESTERS or word in TEST_WORDS:
-            operations.add("verify")
         if name in {"git"}:
             operations.add("version-control")
         if name in {"pip", "pip3", "npm", "pnpm", "yarn", "uv"}:
             operations.add("package")
         if name in {"python", "python3", "node", "ruby"}:
             operations.add("runtime")
+    if test_command(arguments.get("command")):
+        operations.add("verify")
     if "patch" in capability or "edit" in capability or "write" in capability:
         operations.add("modify")
     if arguments.get(WORKSPACE_CHANGES):  # a shell command that changed project files
