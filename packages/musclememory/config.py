@@ -16,6 +16,7 @@ class Settings:
     min_reliability: float = 0.65
     min_match: float = 0.25
     stale_days: int = 90
+    require_proven_test: bool = False
     trace_retention_days: int = 30
     requests_per_minute: int = 120
     candidate_limit: int = 80
@@ -48,6 +49,8 @@ class Settings:
             min_successes=int(os.getenv("MM_MIN_SUCCESSES", "2")),
             min_reliability=float(os.getenv("MM_MIN_RELIABILITY", "0.65")),
             stale_days=int(os.getenv("MM_STALE_DAYS", "90")),
+            require_proven_test=os.getenv("MM_REQUIRE_PROVEN_TEST", "false").lower()
+            in {"1", "true", "yes"},
             trace_retention_days=int(os.getenv("MM_TRACE_RETENTION_DAYS", "30")),
             requests_per_minute=int(os.getenv("MM_REQUESTS_PER_MINUTE", "120")),
             link_fanout_limit=int(os.getenv("MM_LINK_FANOUT_LIMIT", "8")),

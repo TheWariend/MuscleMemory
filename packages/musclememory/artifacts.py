@@ -356,3 +356,20 @@ def query_keys(query):
         if re.search(r"(?:/|\.[a-zA-Z0-9]{1,8}$)", word) and (path := normalized_path(word)):
             keys.add(("artifact", path))
     return keys
+
+
+TEST_PATH = re.compile(
+    r"(^|/)(tests?|__tests__|spec)/|(^|/)test_[^/]*$|_test\.\w+$|\.(test|spec)\.\w+$"
+)
+
+
+def needs_test_proof(definition):
+    """A skill run against a test that already existed must show that test catching the bug.
+
+    Skills that write or change their own test can't fail it first; a person reviews
+    that test instead.
+    """
+    experience = extract_experience(definition["steps"])
+    return bool(experience["verification_commands"]) and not any(
+        TEST_PATH.search(path) for path in experience["writes"]
+    )

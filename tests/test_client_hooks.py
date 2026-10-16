@@ -509,12 +509,20 @@ def test_capture_control_does_not_inject_memory(codex_hook_host, service, princi
 
 
 def codex_session(config, turn, prompt, test_exit=0):
-    """One Codex session: edit a file, run the tests, stop."""
+    """One Codex session: see the test fail, edit a file, run the tests again, stop."""
 
     def hook(event, **fields):
         return run_hook(config, "codex", payload(event, turn_id=turn, **fields))
 
     hook("UserPromptSubmit", prompt=prompt)
+    hook("PreToolUse", tool_name="Bash", tool_use_id=f"{turn}-red")
+    hook(
+        "PostToolUse",
+        tool_name="Bash",
+        tool_use_id=f"{turn}-red",
+        tool_input={"command": "python3 -m unittest discover -s tests"},
+        tool_response="Process exited with code 1\nFAILED (failures=1)",
+    )
     patch = (
         "*** Begin Patch\n*** Update File: app/rounding.py\n@@\n-int(x)\n+round(x)\n*** End Patch"
     )

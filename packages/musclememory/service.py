@@ -11,7 +11,12 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
-from .artifacts import operation_categories, search_document, semantic_document
+from .artifacts import (
+    needs_test_proof,
+    operation_categories,
+    search_document,
+    semantic_document,
+)
 from .boundaries import derive_boundaries, refine_boundaries
 from .compiler import compile_trace
 from .config import Settings
@@ -89,6 +94,35 @@ def bury(session, principal, procedure, reason):
             session.add(
                 Tombstone(tenant=key[0], namespace=key[1], fingerprint=key[2], reason=reason)
             )
+
+
+def proves_test(events, test):
+    """The skill's own test failed on the original code and passed after the last change."""
+    from .artifacts import documentation_only, test_command
+
+    if not test:
+        return False
+    tools = [e for e in events if e.kind == "tool"]
+    changes = [
+        e.sequence
+        for e in tools
+        if changed_files(e) and not documentation_only(e.arguments, e.effect, e.capability)
+    ]
+    if not changes:
+        return False
+    runs = [e for e in tools if test_command(e.arguments.get("command")) == test]
+    # A failure between edits may only catch the agent's own half-done change.
+    failed_first = any(
+        e.sequence < min(changes) and e.status == "failure" and e.outcome_verified for e in runs
+    )
+    after = [e for e in runs if e.sequence >= max(changes)]
+    return failed_first and bool(after) and after[-1].status == "success"
+
+
+def skill_test(definition):
+    from .artifacts import extract_experience
+
+    return (extract_experience(definition["steps"])["verification_commands"][-1:] or [None])[0]
 
 
 def changed_files(event):
@@ -538,6 +572,9 @@ class MemoryService:
                     embedding_space=self.embeddings.space,
                     step_graph=definition.step_graph,
                     capability_signature=definition.capability_signature,
+                    test_proven_at=utcnow()
+                    if proves_test(events, skill_test(definition.model_dump(mode="json")))
+                    else None,
                 )
             )
             session.flush()
@@ -894,6 +931,12 @@ class MemoryService:
                 )
                 revision.successes += int(request.outcome_report.succeeded)
                 revision.failures += int(not request.outcome_report.succeeded)
+                if (
+                    request.outcome_report.succeeded
+                    and revision.test_proven_at is None
+                    and proves_test(events, skill_test(revision.definition))
+                ):
+                    revision.test_proven_at = utcnow()
                 if not request.outcome_report.succeeded:
                     revision.validation_status = "flagged"
                 elif (
@@ -978,6 +1021,9 @@ class MemoryService:
                 "visibility_scope": procedure.namespace,
                 "lifecycle_status": procedure.lifecycle,
                 "needs_review": procedure.reviewed_at is None,
+                "test_proven": revision.test_proven_at is not None,
+                "test_written_by_skill": bool(skill_test(revision.definition))
+                and not needs_test_proof(revision.definition),
                 "definition": revision.definition,
                 "created_at": procedure.created_at.isoformat() + "Z",
                 "updated_at": procedure.updated_at.isoformat() + "Z",
@@ -1146,6 +1192,7 @@ class MemoryService:
                             "confidence": round(reliability(r), 4),
                             "updated_at": p.updated_at.isoformat() + "Z",
                             "needs_review": p.reviewed_at is None,
+                            "test_proven": r.test_proven_at is not None,
                             "auto_learned": bool(r.definition.get("provenance", {}).get("auto")),
                         }
                         for p, r in rows

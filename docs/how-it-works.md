@@ -147,6 +147,15 @@ do not perform it. An agent must still inspect the current files and adapt.
   changed code, and ran the skill's own test last with a failing result is a
   failed check. A session that just stops, or whose last failing test is a
   different one, is not.
+- **Did the test catch the bug?** MuscleMemory records whether some session ran the
+  skill's test on the original code, saw it fail, and saw it pass after the last change
+  (`test_proven` in the skill's details). A failure between edits doesn't count, since
+  it may only catch the agent's own half-done change. Skills that write or change their
+  own test can't show this and are marked `test_written_by_skill`. This is information
+  for the person approving a skill and never slows learning. Setting
+  `MM_REQUIRE_PROVEN_TEST=true` makes it a requirement: skills whose test already
+  existed then reach agents only once it is proven. Skills learned before this was
+  recorded count as proven.
 - **Removed skills stay removed.** Deleting or retiring a skill stores a
   fingerprint of what it taught (files, edits and test), never its content.
   Learning the same skill again is refused, and a retired skill takes no new

@@ -130,6 +130,8 @@ class Revision(Base):
     validation_status: Mapped[str] = mapped_column(String(20), default="provisional")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     validated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # When a session showed this skill's own test failing before the fix and passing after.
+    test_proven_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     __table_args__ = (
         ForeignKeyConstraint(
             ["tenant", "procedure_token"],

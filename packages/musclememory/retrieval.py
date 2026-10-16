@@ -11,7 +11,7 @@ import httpx
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Float, and_, cast, func, or_, select, text
 
-from .artifacts import extract_experience, query_keys
+from .artifacts import extract_experience, needs_test_proof, query_keys
 from .compiler import signature
 from .core import DomainError
 from .shapes import bound_capability, conditions_satisfied
@@ -228,6 +228,11 @@ def compatibility_freshness(procedure, revision, profile, settings):
         or revision.validation_status != "validated"
         or procedure.lifecycle != "active"
         or procedure.reviewed_at is None  # automatically learned, waiting for a person's OK
+        or (
+            settings.require_proven_test
+            and revision.test_proven_at is None
+            and needs_test_proof(definition)
+        )
     ):
         return None
     return max(0.0, 1 - age_days / settings.stale_days)
