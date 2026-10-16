@@ -107,16 +107,19 @@ your machine. The root is the nearest parent with a `.git` directory or worktree
 file, or the hook's `cwd` outside Git. Captured paths are normalized and normally
 relative to that root; absolute paths must still be inside it.
 
-For a skill that changes files, every changed file must exist as a regular file,
-and at least one stored edit must match its literal `before` or `after` text. If
-no edit matches, the hook stays quiet. Partial matches carry a `warning` field:
+For a skill that changes files, every file it found in place must still exist as a
+regular file: files it edited with a stored `before` text, read before changing, or
+patched as existing (`Update`/`Delete File`). Files the skill created may not exist
+yet. For files that do exist, at least one stored edit must match its literal
+`before` or `after` text. If no edit matches, the hook stays quiet. Partial matches carry a `warning` field:
 "files changed since this skill was learned: <files>". The renderer never trims
 that warning; if essential context cannot fit the token budget, it injects nothing.
 
 The check follows no symlinks, opens at most 32 files, and rejects files larger
 than 1 MiB. Missing roots, unreadable files, unsafe paths and other errors skip
-delivery. Skills that change files without stored literal edits also skip; skills
-with no changed files keep their existing delivery behavior. Hook delivery includes
+delivery. Skills with no stored edits to compare (for example, changes made with a
+write tool or from the shell) are delivered once their existing files are present;
+skills with no changed files keep their existing delivery behavior. Hook delivery includes
 only the checked candidate, rather than a plan containing unchecked skills.
 Skip reasons are kept in the private local queue's `skips` table, alongside
 `injections`, and purged with their runs. File contents stay on your machine.

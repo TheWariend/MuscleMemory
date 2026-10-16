@@ -15,8 +15,9 @@
 - Checks must pass the skill's own test: exact comparison after normalizing pipes,
   redirects and shell wrappers, using completion evidence after the last code change.
   Automatic checks use the final passing test. Parameterized commands keep shape matching.
-- Check before handing over, in native hooks: every changed file must exist, and
-  at least one stored edit must match its before or after text. No matches means no
+- Check before handing over, in native hooks: files the skill found in place must
+  still exist (files it created may not yet), and at least one stored edit must match
+  its before or after text. No matches means no
   injection; partial matches carry an untrimmed "files changed since this skill was
   learned" warning. The check reads at most 32 files of at most 1 MiB each, rejects
   symlinks and unsafe paths, and records skip reasons in the private local queue.
@@ -61,8 +62,8 @@
 - A piped test run (`tests | tail`) counts only when the output shows the test
   runner's own pass or fail line.
 - The hook file check is literal text matching, not a behavioral test. It skips
-  file-changing skills without stored edit snippets, missing or oversized files,
-  unsafe paths and unreadable files; read-only skills keep their delivery behavior.
+  skills whose existing files are missing, oversized, unsafe or unreadable; skills
+  without stored edit snippets are delivered without a text comparison; read-only skills keep their delivery behavior.
   On platforms without safe directory-relative, no-follow file APIs, these file
   checks skip delivery. Server, MCP, SDK and CleanSlate recall do not run this probe.
 - Projects in the same namespace share skills and checks. The default namespace

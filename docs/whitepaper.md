@@ -203,11 +203,12 @@ code is never cut mid-string. If the essentials still don't fit, nothing is adde
 once per revision and at most two pointers in total. The full skill is available on request through
 `musclememory_inspect`.
 
-Every changed file must exist as a regular file within the project, and at least
-one stored edit must match its literal before or after text. No matches means no
+Every file the skill found in place must still exist as a regular file within the
+project (files it created may not exist yet), and at least one stored edit must
+match its literal before or after text. No matches means no
 pointer; partial matches carry an untrimmed warning naming the mismatched files.
 The check follows no symlinks, opens at most 32 files and rejects files over 1 MiB.
-File-changing skills without literal edit snippets also skip. It runs no commands
+Skills without literal edit snippets are delivered without a text comparison. It runs no commands
 or model calls and sends no current file contents; skip reasons stay in the local
 queue. Hooks deliver only the checked candidate. Server and MCP recall have no
 project file access. Skills are scoped by tenant and namespace, default `"default"`,

@@ -82,8 +82,9 @@ flowchart LR
 - **You stay in charge.** Automatically learned skills wait for your OK before any agent
   sees them. Agents still read the current files and ask for approval as usual.
   MuscleMemory never replays actions.
-- **Checks current files.** Native hooks require changed files to exist and at least
-  one stored before or after edit to match. If none match, they stay quiet; partial
+- **Checks current files.** Native hooks require the files a skill found in place to
+  still exist (files it created may not exist yet) and at least one stored before or
+  after edit to match. If none match, they stay quiet; partial
   matches include a warning that cannot be trimmed. Reads are bounded and reject
   symlinks. File-check skips are recorded locally. Server and MCP recall have no file
   access. [Exact rules](docs/how-it-works.md#checking-current-files-in-hooks).

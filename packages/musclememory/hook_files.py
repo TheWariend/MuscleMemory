@@ -48,6 +48,9 @@ def check_files(definition, cwd):
     try:
         experience = extract_experience(definition["steps"])
         edits, writes = experience["edits"], experience["writes"]
+        # Files the skill found in place must still exist; files it created may not yet.
+        existing = {edit["file"] for edit in edits if "before" in edit}
+        existing.update(experience["inputs"])
         for step in definition["steps"]:
             arguments = step["arguments"]
             if step["effect"] == "read" and "modify" not in operation_categories(
@@ -59,10 +62,14 @@ def check_files(definition, cwd):
             patch = arguments.get("patch", arguments.get("input", arguments.get("command", "")))
             if isinstance(patch, str):
                 names.extend(re.findall(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", patch, re.M))
+                found = re.findall(r"^\*\*\* (?:Update|Delete) File: (.+)$", patch, re.M)
+                existing.update(filter(None, map(normalized_path, found)))
             for name in names:
                 if not (path := normalized_path(name)):
                     return "unsafe_path", []
                 writes.append(path)
+                if step["capability"] == "filesystem.edit":
+                    existing.add(path)
         if not edits and not writes:
             return None, []
         root, _ = workspace.project_root(cwd)
@@ -83,15 +90,16 @@ def check_files(definition, cwd):
             paths[name] = path
         if len(paths) > MAX_FILES:
             return "too_many_files", []
-        if not edits:
-            return "no_edit_evidence", []
         edited = {edit["file"] for edit in edits}
         files = {}
         for name, path in paths.items():
             try:
                 reason, text = read_file(root, path, contents=name in edited)
             except FileNotFoundError:
-                return "missing_changed_file", []
+                if name in existing:
+                    return "missing_changed_file", []
+                files[name] = None  # created by the skill; nothing to compare yet
+                continue
             except UnicodeError:
                 return "unreadable_file", []
             except OSError:
@@ -99,8 +107,12 @@ def check_files(definition, cwd):
             if reason:
                 return reason, []
             files[name] = text
+        # Without stored edits for files that exist, there is nothing to compare.
+        compared = [edit for edit in edits if files[edit["file"]] is not None]
+        if not compared:
+            return None, []
         matched, mismatched = 0, set()
-        for edit in edits:
+        for edit in compared:
             if any(
                 isinstance(text := edit.get(key), str) and text and text in files[edit["file"]]
                 for key in ("before", "after")

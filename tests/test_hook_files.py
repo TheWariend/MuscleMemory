@@ -117,6 +117,14 @@ def test_hook_skips_missing_changed_or_huge_files_and_records_reason(hook, code,
 def test_deleted_changed_file_without_an_edit_also_blocks_delivery(hook):
     repo, queue, result, _, inject = hook
     (repo / "login.py").write_text("old code")
+    result["candidates"][0]["definition"]["steps"][:0] = [
+        {
+            "step_token": "read",
+            "capability": "filesystem.read",
+            "effect": "read",
+            "arguments": {"file_path": "deleted.py"},
+        }
+    ]
     result["candidates"][0]["definition"]["steps"].append(
         {
             "step_token": "write",
@@ -127,6 +135,44 @@ def test_deleted_changed_file_without_an_edit_also_blocks_delivery(hook):
     )
     assert inject() == ""
     assert queue.db.execute("SELECT reason FROM skips").fetchone()[0] == "missing_changed_file"
+
+
+@pytest.mark.parametrize(
+    "step",
+    [
+        {
+            "capability": "filesystem.write",
+            "arguments": {"file_path": "tests/test_new.py", "content": "def test_new(): pass"},
+        },
+        {
+            "capability": "filesystem.patch",
+            "arguments": {"input": "*** Begin Patch\n*** Add File: tests/test_new.py\n+x = 1\n"},
+        },
+    ],
+)
+def test_files_the_skill_creates_may_not_exist_yet(hook, step):
+    repo, queue, result, _, inject = hook
+    (repo / "login.py").write_text("old code")
+    result["candidates"][0]["definition"]["steps"].append(
+        {"step_token": "create", "effect": "write", **step}
+    )
+    assert json.loads(inject())["changed_files"]
+    assert not queue.db.execute("SELECT * FROM skips").fetchall()
+
+
+def test_skill_without_stored_edits_is_delivered_when_its_files_exist(hook):
+    repo, queue, result, _, inject = hook
+    (repo / "login.py").write_text("anything")
+    result["candidates"][0]["definition"]["steps"] = [
+        {
+            "step_token": "write",
+            "capability": "filesystem.write",
+            "effect": "write",
+            "arguments": {"file_path": "login.py", "content": "new code"},
+        }
+    ]
+    assert json.loads(inject())["changed_files"] == ["login.py"]
+    assert not queue.db.execute("SELECT * FROM skips").fetchall()
 
 
 def test_partial_match_warning_survives_pointer_trimming(hook):
@@ -202,7 +248,9 @@ def test_unknown_files_and_bad_definitions_fail_quietly(tmp_path):
     assert check_files({}, str(tmp_path)) == ("file_check_error", [])
     skill = definition("login.py")
     skill["steps"][0]["arguments"] = {"file_path": "login.py"}
-    assert check_files(skill, str(tmp_path)) == ("no_edit_evidence", [])
+    assert check_files(skill, str(tmp_path)) == ("missing_changed_file", [])
+    (tmp_path / "login.py").write_text("anything")
+    assert check_files(skill, str(tmp_path)) == (None, [])
 
 
 @pytest.mark.parametrize("argument", ["patch", "input", "command"])
