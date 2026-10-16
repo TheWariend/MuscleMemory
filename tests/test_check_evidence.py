@@ -125,3 +125,41 @@ def test_parameterized_test_keeps_shape_matching(service, principal):
     token = train(service, principal, "shell", parameter=True)
     session(service, principal, "later", ["pytest tests/test_signup.py"], "shell")
     assert service.auto_learn(principal, "later", hint=token)["action"] == "checked"
+
+
+def test_a_failing_test_before_the_fix_still_counts_as_a_check(service, principal):
+    token = train(service, principal, "Bash")
+    runtime = RuntimeProfile(
+        agent_name="claude", bindings={"filesystem.edit": "Edit", "shell.execute": "Bash"}
+    )
+    test = {
+        "kind": "tool",
+        "tool_name": "Bash",
+        "capability": "shell.execute",
+        "effect": "destructive",
+        "arguments": {"command": "pytest tests/test_login.py"},
+    }
+    events = [
+        {"event_id": "intent", "sequence": 0, "kind": "intent", "intent_text": "Fix login"},
+        {**test, "event_id": "red", "sequence": 1, "status": "failure"},
+        {
+            "event_id": "edit",
+            "sequence": 2,
+            "kind": "tool",
+            "tool_name": "Edit",
+            "capability": "filesystem.edit",
+            "effect": "write",
+            "arguments": {"file_path": "app/login.py", "old_string": "old", "new_string": "new"},
+        },
+        {**test, "event_id": "green", "sequence": 3},
+        {"event_id": "done", "sequence": 4, "kind": "completion"},
+    ]
+    service.observe(
+        principal,
+        ObserveInput(
+            run_token="later", event_batch=events, runtime_profile=runtime, visibility_scope="team"
+        ),
+    )
+    assert service.auto_learn(principal, "later", hint=token)["action"] == "checked"
+    with service.db.session() as db:
+        assert db.get(Revision, (token, 1)).successes == 1

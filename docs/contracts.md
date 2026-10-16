@@ -100,8 +100,10 @@ inferred when missing. Evaluations require the applied `procedure_version`.
 `POST /v1/runs` creates an execution record; MCP observe can create one from a
 sequence-zero intent. `POST /v1/runs/{run}/auto-learn` turns a session whose tests
 passed into a check for a matching skill, or a new skill that waits for approval;
-native hooks call it when a session stops. `POST /v1/procedures/{id}/approve` is the
-dashboard's Keep. `POST /auth/sign-in` swaps a one-time code from
+native hooks call it when a session stops. `POST /v1/runs/{run}/auto-flag?hint={id}`
+records a failed check when that skill's own test failed last after a code change;
+native hooks call it for a session that was given the skill. `POST
+/v1/procedures/{id}/approve` is the dashboard's Keep and needs admin access. `POST /auth/sign-in` swaps a one-time code from
 `musclememory dashboard` for a dashboard key. `GET /v1/runs` and `/v1/procedures` accept namespace, bounded
 limit, and offset. Run/procedure detail, procedure revisions, retirement, memory
 deletion, namespace usage, session grants, key listing, and revocation have

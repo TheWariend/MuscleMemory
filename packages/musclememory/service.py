@@ -58,8 +58,37 @@ from .storage import (
     Run,
     SessionUsage,
     SignInCode,
+    Tombstone,
     utcnow,
 )
+
+
+def skill_fingerprint(definition):
+    """What a skill teaches (files, edits, test), hashed: its identity across re-learning."""
+    from .artifacts import extract_experience
+
+    experience = extract_experience(definition["steps"])
+    content = {
+        "changes": experience["writes"],
+        "edits": experience["edits"],
+        "test": experience["verification_commands"][-1:],
+        "reads": experience["reads"],
+        "capabilities": sorted({step["capability"] for step in definition["steps"]}),
+    }
+    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
+
+
+def bury(session, principal, procedure, reason):
+    """Remember every version of a removed skill so learning never brings it back."""
+    revisions = session.scalars(
+        select(Revision).where(Revision.procedure_token == procedure.procedure_token)
+    ).all()
+    for revision in revisions:
+        key = (principal.tenant, procedure.namespace, skill_fingerprint(revision.definition))
+        if not session.get(Tombstone, key):
+            session.add(
+                Tombstone(tenant=key[0], namespace=key[1], fingerprint=key[2], reason=reason)
+            )
 
 
 def changed_files(event):
@@ -461,6 +490,15 @@ class MemoryService:
             definition.provenance["contrast_ids"] = [item.contrast_id for item in contrasts]
             derive_boundaries(definition, events, contrasts)
             warnings.extend(refine_boundaries(definition, contrasts, self.settings))
+            fingerprint_key = (
+                principal.tenant,
+                run.namespace,
+                skill_fingerprint(definition.model_dump(mode="json")),
+            )
+            if session.get(Tombstone, fingerprint_key):
+                raise DomainError(
+                    "removed_skill", "This skill was removed and will not be learned again", 409
+                )
             if request.learning_policy.revise_procedure_token:
                 procedure = self._procedure(
                     session, principal, request.learning_policy.revise_procedure_token, "write"
@@ -469,16 +507,21 @@ class MemoryService:
                     raise DomainError(
                         "revision_scope", "Revision traces must use the procedure namespace"
                     )
+                if procedure.lifecycle == "retired":
+                    raise DomainError(
+                        "removed_skill", "A retired skill does not take new versions", 409
+                    )
                 procedure.current_version += 1
                 procedure.lifecycle = "provisional"
+                procedure.reviewed_at = None  # a new version needs a new OK
                 procedure.updated_at = utcnow()
             else:
-                # Skills learned on purpose are approved; automatic ones wait for an OK.
+                # Every skill waits for a person's OK, however it was learned.
                 procedure = Procedure(
                     tenant=principal.tenant,
                     namespace=run.namespace,
                     current_version=1,
-                    reviewed_at=None if auto else utcnow(),
+                    reviewed_at=None,
                 )
                 session.add(procedure)
                 session.flush()
@@ -1166,21 +1209,84 @@ class MemoryService:
                         and run.learned_result["result"]["procedure_token"] == token
                     ):
                         run.learned_result = None
+                bury(session, principal, record, "deleted")
             session.delete(record)
             self.audit(session, principal, namespace, f"delete_{kind}", token)
             session.commit()
         return {"deleted": True}
 
     def approve(self, principal, token):
-        """A person's OK: an automatically learned skill may now reach agents once verified."""
+        """A person's OK: the skill may now reach agents once verified.
+
+        Needs admin access (the dashboard), so an agent's own key cannot approve.
+        """
         with self.db.transaction() as session:
-            procedure = self._procedure(session, principal, token, "write")
+            procedure = self._procedure(session, principal, token, "admin")
             if procedure.reviewed_at is None:
                 procedure.reviewed_at = utcnow()
                 procedure.updated_at = utcnow()
             self.audit(session, principal, procedure.namespace, "approve", token)
             session.commit()
             return {"procedure_token": token, "approved": True}
+
+    def auto_flag(self, principal, run_token, hint):
+        """After a session given a skill whose own test failed last: a failed check for it."""
+        from .artifacts import documentation_only, extract_experience, test_command
+
+        with self.db.session() as session:
+            run = self._run(session, principal, run_token, "write")
+            if run.status != "failure":
+                raise DomainError("unverified_run", "Only sessions whose tests failed fail a check")
+            events = self._events(session, run)
+            procedure = self._procedure(session, principal, hint, "write")
+            version = procedure.current_version
+            definition = session.get(Revision, (hint, version)).definition
+        tools = [e for e in events if e.kind == "tool"]
+        last_change = max(
+            (
+                e.sequence
+                for e in tools
+                if changed_files(e) and not documentation_only(e.arguments, e.effect, e.capability)
+            ),
+            default=None,
+        )
+        tests = [
+            e
+            for e in tools
+            if last_change is not None
+            and e.sequence >= last_change
+            and test_command(e.arguments.get("command"))
+        ]
+        stored = extract_experience(definition["steps"])["verification_commands"][-1:]
+        final = tests[-1] if tests else None
+        # Only the skill's own test, run last after the last change and failing, is a check.
+        if not (
+            final
+            and stored
+            and final.status == "failure"
+            and final.outcome_verified
+            and test_command(final.arguments.get("command")) == stored[0]
+        ):
+            return {"action": "none"}
+        result = self.evaluate(
+            principal,
+            EvaluateInput(
+                procedure_token=hint,
+                run_token=run_token,
+                outcome_report={
+                    "succeeded": False,
+                    "procedure_version": version,
+                    "evidence_event_ids": [final.event_id],
+                },
+                performance_metrics={
+                    "observed": {
+                        "tool_calls": len(tools),
+                        "duration_ms": sum(e.duration_ms for e in tools),
+                    }
+                },
+            ),
+        )
+        return {"action": "flagged", "procedure_token": hint, **result}
 
     def auto_learn(self, principal, run_token, hint=None):
         """After a session whose tests passed: count it as a check, or learn a new skill."""
@@ -1234,10 +1340,12 @@ class MemoryService:
                     .distinct()
                     .limit(self.settings.candidate_limit)
                 ).all()
+        # The check is measured on every tool call, failed ones included, as evaluate expects.
+        calls = [e for e in events if e.kind == "tool"]
         metrics = {
             "observed": {
-                "tool_calls": len(tools),
-                "duration_ms": sum(e.duration_ms for e in tools),
+                "tool_calls": len(calls),
+                "duration_ms": sum(e.duration_ms for e in calls),
             }
         }
         validated = []
@@ -1266,20 +1374,25 @@ class MemoryService:
             validated.append({"procedure_token": token, "successes": result.get("successes")})
         if validated:
             return {"action": "checked", "procedures": validated}
-        learned = self.learn(
-            principal,
-            LearnInput(
-                run_token=run_token,
-                completion_proof={
-                    "succeeded": True,
-                    "evidence_event_ids": [verifiers[-1].event_id],
-                    "verifier": "tool_assertion",
-                    "summary": "Tests passed after the last change",
-                },
-                learning_policy={},
-            ),
-            auto=True,
-        )
+        try:
+            learned = self.learn(
+                principal,
+                LearnInput(
+                    run_token=run_token,
+                    completion_proof={
+                        "succeeded": True,
+                        "evidence_event_ids": [verifiers[-1].event_id],
+                        "verifier": "tool_assertion",
+                        "summary": "Tests passed after the last change",
+                    },
+                    learning_policy={},
+                ),
+                auto=True,
+            )
+        except DomainError as error:
+            if error.code == "removed_skill":
+                return {"action": "none", "reason": "removed_skill"}
+            raise
         with self.db.transaction() as session:
             revision = session.get(Revision, (learned["procedure_token"], 1))
             revision.definition = {
@@ -1320,6 +1433,7 @@ class MemoryService:
         with self.db.transaction() as session:
             procedure = self._procedure(session, principal, token, "write")
             procedure.lifecycle = "retired"
+            bury(session, principal, procedure, "retired")
             self.audit(session, principal, procedure.namespace, "retire", token)
             session.commit()
         return {"lifecycle_status": "retired"}

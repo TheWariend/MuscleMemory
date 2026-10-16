@@ -25,6 +25,8 @@ export async function workflow(client, namespace = 'default', source = fileURLTo
         performance_metrics: {observed: run.measurements()}});
     }
   }
+  // Every skill waits for a person's OK; approving needs an admin key.
+  await client.approve(learned.procedure_token);
   const recall = await client.musclememory_recall({intent_text: 'Inspect repository manifest', visibility_scope: namespace,
     runtime_profile: {agent_name: 'alternate-tool-agent', bindings: {'repository.inspect': 'workspace.read'}}, match_limit: 1});
   if (recall.no_match) throw new Error('Validated procedure was not recalled');

@@ -6,6 +6,7 @@ from dataclasses import replace
 import httpx
 import pytest
 from musclememory.core import (
+    DomainError,
     EvaluateInput,
     InspectInput,
     LearnInput,
@@ -13,7 +14,7 @@ from musclememory.core import (
     RecallInput,
     RuntimeProfile,
 )
-from musclememory.storage import Contrast, Revision, Run
+from musclememory.storage import Contrast, Procedure, Revision, Run
 from sqlalchemy import func, select
 
 PROFILE = RuntimeProfile(
@@ -100,6 +101,7 @@ def train(service, principal, token="training", *, extra=None, conditions=None):
             },
         ),
     )
+    service.approve(principal, result["procedure_token"])
     for index in range(2):
         run = f"{token}-evaluation-{index}"
         record(service, principal, run, extra=extra)
@@ -252,6 +254,7 @@ def test_validation_and_regression_gate(service, principal):
             },
         ),
     )
+    service.approve(principal, learned["procedure_token"])
     assert recall(service, principal)["no_match"]
     for index in range(3):
         token, success = f"independent-{index}", index < 2
@@ -272,7 +275,7 @@ def test_validation_and_regression_gate(service, principal):
         assert recall(service, principal)["no_match"] == (index != 1)
 
 
-def test_relearning_deleted_procedure_reuses_immutable_contrast(service, principal):
+def test_a_deleted_skill_is_not_learned_again(service, principal):
     record(service, principal, "failure", success=False)
     learned = train(service, principal, extra={"format": "json"})
     request = LearnInput(
@@ -291,11 +294,15 @@ def test_relearning_deleted_procedure_reuses_immutable_contrast(service, princip
     )
     assert service.learn(principal, request) == learned
     service.delete_memory(principal, learned["procedure_token"])
-    rebuilt = service.learn(principal, request)
-    assert rebuilt["procedure_token"] != learned["procedure_token"]
+    with pytest.raises(DomainError, match="removed"):
+        service.learn(principal, request)
+    # The same work done again in a new session doesn't bring it back either.
+    record(service, principal, "again", extra={"format": "json"})
+    with pytest.raises(DomainError, match="removed"):
+        service.learn(principal, request.model_copy(update={"run_token": "again"}))
     with service.db.session() as session:
         assert session.scalar(select(func.count()).select_from(Contrast)) == 1
-    assert rebuilt["validation_status"] == "provisional"
+        assert session.scalar(select(func.count()).select_from(Procedure)) == 0
 
 
 def test_watch_out_names_the_command_that_worked():

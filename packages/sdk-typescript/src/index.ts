@@ -43,6 +43,11 @@ export class MuscleMemoryClient {
     const query = hint && /^[a-zA-Z0-9_.:-]{1,128}$/.test(hint) ? `?hint=${encodeURIComponent(hint)}` : '';
     return this.post(`/v1/runs/${runToken}/auto-learn${query}`, {});
   }
+  /** A person's OK for a skill. Needs an admin key, like the dashboard's. */
+  approve(procedureToken: string) {
+    if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(procedureToken)) throw new Error('Invalid procedure token');
+    return this.post(`/v1/procedures/${procedureToken}/approve`, {});
+  }
   record_session_usage(runToken: string, input: SessionUsageInput) {
     if (!/^[a-zA-Z0-9_.:-]{1,128}$/.test(runToken)) throw new Error('Invalid run token');
     return this.post(`/v1/runs/${runToken}/usage`, input);

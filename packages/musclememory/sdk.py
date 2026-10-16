@@ -81,5 +81,19 @@ class MuscleMemoryClient:
         response.raise_for_status()
         return response.json()
 
+    def approve(self, procedure_token):
+        """A person's OK for a skill. Needs an admin key, like the dashboard's."""
+        response = self.http.post(f"/v1/procedures/{procedure_token}/approve", json={})
+        response.raise_for_status()
+        return response.json()
+
+    def auto_flag(self, run_token, hint):
+        """After a session whose skill's own test failed last: a failed check for that skill."""
+        response = self.http.post(
+            f"/v1/runs/{run_token}/auto-flag", params={"hint": hint}, json={}, timeout=8
+        )
+        response.raise_for_status()
+        return response.json()
+
     def record_session_usage(self, run_token, **arguments):
         return self._post(f"/v1/runs/{run_token}/usage", SessionUsageInput(**arguments))

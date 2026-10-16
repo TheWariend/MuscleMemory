@@ -76,11 +76,19 @@ flowchart LR
   own stored test command after the last code change. Pipes, redirects and shell
   wrappers are normalized; parameterized commands keep shape matching. Automatic
   checks use the final passing test, so an unrelated test cannot count. The training
-  session doesn't count. One failed check pauses the skill.
+  session doesn't count. Only real test runs count (`pytest`, `python -m unittest`,
+  `go test`, `cargo test`, `npm test`, `make test` and similar); commands that only
+  mention tests, like `cargo build` or `ruff check`, don't.
+- **One failure pulls it.** If an agent was given a skill, changed code, and the skill's
+  own test then failed as the last test run, the hooks report a failed check and the
+  skill stops reaching agents. A session that just stops, or where a different test
+  failed, doesn't count against it.
 - **Learns from failures.** Failed attempts become plain "watch out" and "if it goes wrong"
   notes, so the agent avoids the same dead ends.
-- **You stay in charge.** Automatically learned skills wait for your OK before any agent
-  sees them. Agents still read the current files and ask for approval as usual.
+- **You stay in charge.** Every skill waits for your OK before any agent sees it, however
+  it was learned (hooks, SDK, MCP or the API), and so does every new version. Only the
+  dashboard can approve; an agent's own key can't. Skills you delete or retire stay
+  removed: the same skill isn't learned again. Agents still read the current files and ask for approval as usual.
   MuscleMemory never replays actions.
 - **Checks current files.** Native hooks require the files a skill found in place to
   still exist (files it created may not exist yet) and at least one stored before or

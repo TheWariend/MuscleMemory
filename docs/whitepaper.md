@@ -11,7 +11,7 @@ tool calls and time. MuscleMemory is an open-source procedural memory service th
 records how an agent completes a task, keeps only work that was proven by a passing
 test after the last code change, and hands a short pointer to the next agent that
 faces a similar task. A learned skill reaches agents only after two separate passing
-checks and, for automatically learned skills, a person's approval. Failed attempts are
+checks and a person's approval. Failed attempts are
 turned into plain "watch out" notes instead of being thrown away.
 
 On 18 real Codex sessions across three repair tasks, MuscleMemory cut input tokens by
@@ -50,7 +50,7 @@ judgement.
   command passed after the last code change and every tool call was captured.
 - **Trust needs independent checks.** A skill is handed to agents only after two later
   sessions pass with it. The session it was learned from never counts.
-- **People stay in charge.** Skills learned automatically wait for a person's OK.
+- **People stay in charge.** Every skill waits for a person's OK, and agents cannot give it.
 - **Guidance, never replay.** Agents receive a short pointer: files, the key edits,
   the test and what to avoid. They still read the current code and ask for approval as usual.
   MuscleMemory runs nothing.
@@ -89,7 +89,10 @@ to a private local queue, so a capture survives a stopped server. Values under
 secret-looking keys (tokens, passwords, API keys) are removed before storage.
 
 When a session stops, the hook applies one rule. Every edit is classified as a code
-change, and every command that runs tests is classified as a check. Agents often
+change, and every command that runs tests is classified as a check. A command runs
+tests when it starts a known test runner (`pytest`, `jest`, Django's `runtests.py`) or
+a tool's test subcommand (`go test`, `cargo test`, `npm test`); merely containing the
+word "test" or "check" is not enough. Agents often
 change code from the shell instead of an edit tool (a script, a heredoc, `sed -i`), so
 the hook also notes which project files differ from version control before and after
 each shell command: if any changed, that command is a code change too, and the paths
@@ -146,7 +149,10 @@ only when all of these hold:
 | Fit | Every applicability condition known and met for the asking agent; file-change tools (patch, edit, write) count as one ability |
 
 One failed check flags the skill, and it stops reaching agents until a new revision is
-learned and checked. Revisions are kept, so a person can see what changed and why.
+learned and checked. The hooks report this themselves when a session that was given the
+skill changes code and the skill's own test fails as the last test run. Deleting or
+retiring a skill leaves a fingerprint of what it taught, so the same skill is not
+learned again. Revisions are kept, so a person can see what changed and why.
 
 ## 7. Learning from failure
 

@@ -48,6 +48,7 @@ def test_rest_learning_workflow(http):
             )
             assert response.status_code == 200
             procedure = response.json()["procedure_token"]
+            assert http.post(f"/v1/procedures/{procedure}/approve").status_code == 200
         else:
             response = http.post(
                 "/v1/evaluate",

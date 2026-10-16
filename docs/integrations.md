@@ -65,8 +65,12 @@ see [its setup](../integrations/cleanslate/README.md).
    order. If the server is down, they stay queued; `musclememory hooks flush
    --client <agent> --config ~/.musclememory/hooks/<agent>.json` sends them later.
 3. **Stop.** MuscleMemory checks whether a test command passed after the last file
-   change. Test commands include `pytest`, `unittest`, `jest`, `vitest`, `cargo`,
-   `go`, `npm test` and `make test`. File changes are edits, writes and patches made
+   change. Test commands are real test runs: `pytest`, `python -m unittest`,
+   Django's `runtests.py` and `manage.py test`, `jest`, `vitest`, `mocha`,
+   `cargo test`, `go test`, `npm test` or `npm run test:*`, `make test`/`check`,
+   `mvn test`, `gradle test`, `dotnet test`, `rspec` and similar, also behind
+   `uv run`, `npx`, `timeout` or environment variables. Commands that only mention
+   tests (`cargo build`, `ruff check`, `echo test`) don't count. File changes are edits, writes and patches made
    through the agent's file tools.
 
 ## How a session becomes a skill
@@ -78,17 +82,22 @@ see [its setup](../integrations/cleanslate/README.md).
     normalizing pipes, redirects and shell wrappers; parameterized commands keep
     argument-shape matching. An unrelated final test does not count.
   - Otherwise MuscleMemory learns a new skill from it.
-- **Tests failed, no test ran, or the capture has gaps:** nothing is learned.
+- **Tests failed:** nothing is learned. If the session was given a skill, changed
+  code, and that skill's own test was the last test and failed, it counts as a
+  failed check for that skill.
+- **No test ran, or the capture has gaps:** nothing is learned.
 
 A skill reaches agents only when both are true:
 
 1. It passed two independent checks (the session it came from does not count).
-2. A person approved it. Skills learned automatically show **Needs your OK** in the
-   dashboard (`musclememory dashboard`). Choose **Keep** or **Delete**. Skills you
-   learn on purpose through the SDK, MCP or `hooks learn` count as approved.
+2. A person approved it. Every skill shows **Needs your OK** in the dashboard
+   (`musclememory dashboard`) until you choose **Keep** or **Delete**, whether it
+   was learned by the hooks, the SDK, MCP or `hooks learn`. Agent keys cannot
+   approve.
 
 One failed check pauses a skill until it is relearned. Turning a skill off or
-deleting it in the dashboard stops it reaching agents right away.
+deleting it in the dashboard stops it reaching agents right away, and the same
+skill is not learned again.
 
 Native hooks also check the current project before delivery: files the skill found
 in place must still exist (files it created may not yet), and at least one stored

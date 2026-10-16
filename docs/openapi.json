@@ -842,6 +842,63 @@
         }
       }
     },
+    "/v1/runs/{run_token}/auto-flag": {
+      "post": {
+        "summary": "Auto Flag",
+        "operationId": "auto_flag_v1_runs__run_token__auto_flag_post",
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "title": "Run Token"
+            }
+          },
+          {
+            "name": "hint",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "title": "Hint"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/sign-in": {
       "post": {
         "summary": "Sign In",

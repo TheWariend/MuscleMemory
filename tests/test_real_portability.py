@@ -52,6 +52,7 @@ async def test_python_agent_to_stdio_mcp_agent_real_files(service, principal, cr
                     },
                 ),
             )["procedure_token"]
+            service.approve(principal, token)
         else:
             service.evaluate(
                 principal,

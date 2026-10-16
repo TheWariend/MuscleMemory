@@ -293,6 +293,10 @@ def create_app(service=None):
     def auto_learn(run_token: Token, hint: Token | None = None, actor=auth):
         return service.auto_learn(actor, run_token, hint)
 
+    @app.post("/v1/runs/{run_token}/auto-flag")
+    def auto_flag(run_token: Token, hint: Token, actor=auth):
+        return service.auto_flag(actor, run_token, hint)
+
     @app.post("/auth/sign-in")
     async def sign_in(request: Request):
         # Swaps a one-time code from `musclememory dashboard` for a dashboard key.

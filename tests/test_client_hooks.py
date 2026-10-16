@@ -403,7 +403,9 @@ def codex_hook_host(tmp_path, monkeypatch, credential, service, http):
     return config, calls, faults, connect
 
 
-def test_codex_prompt_hook_injects_once_and_tool_hooks_only_capture(codex_hook_host, credential):
+def test_codex_prompt_hook_injects_once_and_tool_hooks_only_capture(
+    codex_hook_host, credential, service, principal
+):
     config, calls, _, connect = codex_hook_host
     runtime = profile("codex")
     with connect("http://127.0.0.1:8080", credential["api_key"]) as client:
@@ -436,6 +438,7 @@ def test_codex_prompt_hook_injects_once_and_tool_hooks_only_capture(codex_hook_h
                         "summary": "Controlled fixture proof",
                     },
                 )
+                service.approve(principal, learned["procedure_token"])
             else:
                 client.musclememory_evaluate(
                     procedure_token=learned["procedure_token"],
@@ -690,7 +693,7 @@ def test_one_command_that_edits_then_tests_verifies(tmp_path):
 
 @pytest.mark.parametrize(
     ("output", "expected"),
-    [("Ran 4 tests\n\nOK\n", "verified"), ("FAILED (failures=1)\n", "ended"), ("", "ended")],
+    [("Ran 4 tests\n\nOK\n", "verified"), ("FAILED (failures=1)\n", "failed"), ("", "ended")],
 )
 def test_piped_tests_need_the_runners_own_summary(tmp_path, output, expected):
     repo = git_project(tmp_path)
@@ -853,6 +856,85 @@ def test_claude_shell_session_counts_as_a_check_on_a_codex_skill(
     skills = service.listing(principal, "team", "procedures")["items"]
     assert len(skills) == 1  # a check on the same skill, not a duplicate
     assert skills[0]["successes"] == 3
+
+
+@pytest.mark.parametrize(
+    ("command", "flagged"),
+    [
+        ("python3 -m unittest discover -s tests 2>&1 | tail -3", True),  # the skill's own test
+        ("python3 -m unittest tests.test_other 2>&1 | tail -3", False),  # some other test
+    ],
+)
+def test_a_skill_whose_own_test_fails_after_use_is_flagged(
+    codex_hook_host, service, principal, tmp_path, command, flagged
+):
+    config, *_ = codex_hook_host
+    for turn, prompt in [
+        ("t1", "Fix the rounding bug in app/rounding.py"),
+        ("t2", "Rounding in app/rounding.py is wrong again"),
+        ("t3", "Please repair rounding in app/rounding.py"),
+    ]:
+        codex_session(config, turn, prompt)
+    skill = service.listing(principal, "team", "procedures")["items"][0]
+    service.approve(principal, skill["procedure_token"])
+    repo = git_project(tmp_path)
+
+    def hook(event, **fields):
+        return run_hook(
+            config, "claude", payload(event, cwd=str(repo), session_id="claude-2", **fields)
+        )
+
+    def bash(source, command, stdout, change=None):
+        hook("PreToolUse", tool_name="Bash", tool_use_id=source)
+        if change:
+            change()
+        hook(
+            "PostToolUse",
+            tool_name="Bash",
+            tool_use_id=source,
+            tool_input={"command": command},
+            tool_response={"stdout": stdout, "stderr": ""},
+        )
+
+    def rewrite():
+        (repo / "app" / "rounding.py").write_text("def cents(x):\n    return round(x)\n")
+
+    assert "additionalContext" in json.dumps(
+        hook("UserPromptSubmit", prompt="Fix the rounding bug in app/rounding.py")
+    )
+    bash("edit", "python3 - <<'E'\nfix()\nE", "", rewrite)
+    bash("test", command, "Ran 3 tests\n\nFAILED (failures=1)")
+    hook("Stop")
+    [after] = service.listing(principal, "team", "procedures")["items"]
+    assert (after["status"] == "flagged") is flagged
+    assert after["successes"] == 2 and after["failures"] == int(flagged)
+
+
+def test_a_session_that_ends_with_failing_tests_closes_as_a_failure(tmp_path):
+    repo = git_project(tmp_path)
+    queue = HookQueue(tmp_path / "queue", "identity")
+    try:
+        outcome, _ = claude_shell_session(
+            queue,
+            repo,
+            [
+                (
+                    "Edit",
+                    {"file_path": "app/rounding.py", "old_string": "int", "new_string": "round"},
+                    {"success": True},
+                    nothing,
+                ),
+                (
+                    "Bash",
+                    {"command": "python3 -m unittest"},
+                    {"stdout": "FAILED (errors=1)", "exitCode": 1},
+                    nothing,
+                ),
+            ],
+        )
+        assert outcome == "failed"
+    finally:
+        queue.close()
 
 
 def codex_plain_session(config, turn, prompt, test_output):

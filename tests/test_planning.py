@@ -47,6 +47,7 @@ def learned_edge(service, principal, title, reads, writes):
                     },
                 ),
             )
+            service.approve(principal, learned["procedure_token"])
         else:
             service.evaluate(
                 principal,

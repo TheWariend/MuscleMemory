@@ -68,6 +68,8 @@ def workflow(client, namespace="default"):
                 },
                 performance_metrics={"observed": run.measurements()},
             )
+    # Every skill waits for a person's OK; approving needs an admin key.
+    client.approve(learned["procedure_token"])
     other_profile = {
         "agent_name": "another-compatible-agent",
         "bindings": {"repository.inspect": "workspace.read"},

@@ -130,9 +130,10 @@ def trace(
     return events
 
 
-def learned(service, principal, token="training", policy=None):
+def learned(service, principal, token="training", policy=None, approve=True):
+    """Learn a skill from a passing trace and, like a person in the dashboard, approve it."""
     trace(service, principal, token)
-    return service.learn(
+    result = service.learn(
         principal,
         LearnInput(
             run_token=token,
@@ -144,6 +145,9 @@ def learned(service, principal, token="training", policy=None):
             learning_policy=policy or {},
         ),
     )
+    if approve:
+        service.approve(principal, result["procedure_token"])
+    return result
 
 
 def evaluate(service, principal, procedure, token, success=True, version=1, profile=PROFILE):

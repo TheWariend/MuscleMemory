@@ -46,9 +46,11 @@ flowchart LR
    `git diff`) need not be repeated.
    Otherwise MuscleMemory compiles a new skill from it. The session a skill was
    learned from can never count as one of its checks.
-4. **Approve.** Skills learned automatically wait for a person's OK. In the
-   dashboard they show as "Needs your OK" with Keep and Delete buttons. Skills
-   created on purpose through the API count as approved.
+4. **Approve.** Every skill waits for a person's OK, however it was learned
+   (hooks, SDK, MCP or the API), and a new version needs a new OK. In the
+   dashboard skills show as "Needs your OK" with Keep and Delete buttons.
+   Approving needs admin access, which the dashboard has and agent keys don't,
+   so an agent cannot approve its own skills.
 5. **Ready.** A skill is handed to agents only when it is kept, has at least two
    passing checks, has a smoothed reliability of at least 0.65, has been
    validated in the last 90 days, and needs only tools and permissions the
@@ -141,6 +143,14 @@ do not perform it. An agent must still inspect the current files and adapt.
   see the [error-warning design note](error-recall-design.md).
 - **One failed check flags a skill.** If a later check fails, the skill is
   flagged and stops reaching agents until a new revision is learned and checked.
+  Native hooks report failed checks themselves: a session that was given a skill,
+  changed code, and ran the skill's own test last with a failing result is a
+  failed check. A session that just stops, or whose last failing test is a
+  different one, is not.
+- **Removed skills stay removed.** Deleting or retiring a skill stores a
+  fingerprint of what it taught (files, edits and test), never its content.
+  Learning the same skill again is refused, and a retired skill takes no new
+  versions.
 - **Optional refinement.** If you set `MM_BOUNDARY_LLM_URL`, the notes can be
   refined by an HTTPS model endpoint. Only value-free text is sent: commands
   become "a command" and file names become "a file".

@@ -312,6 +312,22 @@ class HookQueue:
                     )
                     self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
                     return token, "verified"
+                failed = self._tests_failed(token) if event_name in {"Stop", "stop"} else None
+                if failed and not row["closed"]:
+                    self.append(
+                        token,
+                        "tests-failed",
+                        {
+                            "kind": "completion",
+                            "status": "failure",
+                            "response": {
+                                "verification": "Tests failed after the last change",
+                                "verifier_event": failed,
+                            },
+                        },
+                    )
+                    self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
+                    return token, "failed"
                 if client == "codex":
                     self._finish_incomplete(
                         token, "Codex turn ended without externally verified outcome"
@@ -469,6 +485,16 @@ class HookQueue:
 
     def _tests_passed(self, token):
         """A session counts as verified when a test command passed after the last code change."""
+        final = self._final_test(token)
+        return final["event_id"] if final and final["status"] == "success" else None
+
+    def _tests_failed(self, token):
+        """A session failed when its last test command after the last code change failed."""
+        final = self._final_test(token)
+        return final["event_id"] if final and final["status"] == "failure" else None
+
+    def _final_test(self, token):
+        """The last test run with a known outcome after the last code change, or None."""
 
         gaps = set(
             json.loads(
@@ -483,7 +509,7 @@ class HookQueue:
                 "SELECT payload FROM events WHERE run=? ORDER BY sequence", (token,)
             )
         ]
-        last_change, passing_test = None, None
+        last_change, final_test = None, None
         for index, event in enumerate(events):
             if event["kind"] != "tool":
                 continue
@@ -495,15 +521,11 @@ class HookQueue:
                 # Editing only documentation after the tests passed can't break them.
                 and not documentation_only(event["arguments"], event["effect"], event["capability"])
             ):
-                last_change, passing_test = index, None
+                last_change, final_test = index, None
             # One command may change files and then run the tests (`script && tests`).
             if "verify" in operations:
-                passing_test = (
-                    event["event_id"]
-                    if event["status"] == "success" and event.get("outcome_verified", True)
-                    else None
-                )
-        return passing_test if last_change is not None else None
+                final_test = event if event.get("outcome_verified", True) else None
+        return final_test if last_change is not None else None
 
     def injected(self, token):
         """The skill handed to this session at its prompt, if any."""
@@ -873,6 +895,15 @@ def run_hook(config_path, client_name, payload):
                 client.auto_learn(token, hint=queue.injected(token))
             except Exception as error:
                 print(f"MuscleMemory could not learn ({type(error).__name__}).", file=sys.stderr)
+        if stage == "failed" and (skill := queue.injected(token)):
+            # The skill handed to this session ended with its own test failing: one
+            # failed check flags it until a new version is learned and checked.
+            try:
+                while queue.deliver(client, token):
+                    pass
+                client.auto_flag(token, hint=skill)
+            except Exception as error:
+                print(f"MuscleMemory could not record ({type(error).__name__}).", file=sys.stderr)
         recall_enabled = config.get("recall_enabled", True)
         if stage == "prompt" and client_name != "cursor" and recall_enabled:
             try:

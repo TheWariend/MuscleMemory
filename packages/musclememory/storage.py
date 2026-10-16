@@ -232,6 +232,17 @@ class Audit(Base):
     __table_args__ = (Index("ix_audit_scope_time", "tenant", "namespace", "created_at"),)
 
 
+class Tombstone(Base):
+    """A removed skill's fingerprint, so the same skill is not learned again."""
+
+    __tablename__ = "tombstones"
+    tenant: Mapped[str] = mapped_column(String(128), primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(128), primary_key=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), primary_key=True)
+    reason: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class RateWindow(Base):
     __tablename__ = "rate_windows"
     key_id: Mapped[str] = mapped_column(String(36), primary_key=True)

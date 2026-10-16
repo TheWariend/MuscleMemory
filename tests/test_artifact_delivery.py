@@ -54,6 +54,7 @@ def procedure(service, principal, name, direction, path):
                     },
                 ),
             )
+            service.approve(principal, learned["procedure_token"])
         else:
             service.evaluate(
                 principal,

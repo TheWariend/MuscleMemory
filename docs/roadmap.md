@@ -11,7 +11,14 @@
 - Skills move between agents: one learned with Codex is handed to Claude Code and
   counted as checked by Claude Code's passing sessions.
 - Two independent passing checks before a skill is trusted, a pause after a failed check,
-  and a person's OK before any automatically learned skill reaches an agent.
+  and a person's OK before any skill reaches an agent, however it was learned. Only
+  admin keys (the dashboard) can approve.
+- Failed checks reported by the hooks: a session given a skill whose own test fails
+  last after a code change flags that skill.
+- Real test detection: known test runners and test subcommands, not any command that
+  mentions "test" or "check".
+- Removed skills stay removed: deleting or retiring a skill keeps a fingerprint so the
+  same skill is not learned again.
 - Checks must pass the skill's own test: exact comparison after normalizing pipes,
   redirects and shell wrappers, using completion evidence after the last code change.
   Automatic checks use the final passing test. Parameterized commands keep shape matching.

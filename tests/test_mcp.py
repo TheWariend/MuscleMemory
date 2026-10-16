@@ -30,7 +30,8 @@ FIELDS = {
 }
 
 
-async def protocol_workflow(client):
+async def protocol_workflow(client, approve):
+    """Learn, check and recall over MCP. `approve` is the person's OK, which MCP cannot give."""
     discovered = await client.list_tools()
     assert {tool.name for tool in discovered.tools} == NAMES
     for tool in discovered.tools:
@@ -92,9 +93,11 @@ async def protocol_workflow(client):
                 },
             )
             assert not result.is_error, result
-    result = await client.call_tool(
-        "musclememory_recall", {**common, "intent_text": "Inspect repository manifest"}
-    )
+    recall = {**common, "intent_text": "Inspect repository manifest"}
+    result = await client.call_tool("musclememory_recall", recall)
+    assert not result.is_error and result.structured_content["no_match"]  # waits for an OK
+    approve(procedure)
+    result = await client.call_tool("musclememory_recall", recall)
     assert not result.is_error and not result.structured_content["no_match"]
     result = await client.call_tool("musclememory_inspect", {"procedure_token": procedure})
     assert not result.is_error and result.structured_content["successes"] == 2
@@ -108,12 +111,16 @@ async def protocol_workflow(client):
     assert invalid.is_error
 
 
-async def test_official_client_in_process(service, credential):
+def approver(service, principal):
+    return lambda procedure: service.approve(principal, procedure)
+
+
+async def test_official_client_in_process(service, credential, principal):
     async with Client(build_mcp(service, stdio_key=credential["api_key"]), mode="legacy") as client:
-        await protocol_workflow(client)
+        await protocol_workflow(client, approver(service, principal))
 
 
-async def test_stdio_real_subprocess(service, credential):
+async def test_stdio_real_subprocess(service, credential, principal):
     params = StdioServerParameters(
         command=sys.executable,
         args=["-m", "musclememory.cli", "stdio"],
@@ -124,7 +131,7 @@ async def test_stdio_real_subprocess(service, credential):
         },
     )
     async with Client(params, mode="legacy") as client:
-        await protocol_workflow(client)
+        await protocol_workflow(client, approver(service, principal))
 
 
 async def test_stdio_rest_gateway_contract_and_revocation(
@@ -136,7 +143,7 @@ async def test_stdio_rest_gateway_contract_and_revocation(
         env={**os.environ, "MM_API_KEY": credential["api_key"]},
     )
     async with Client(params, mode="legacy") as client:
-        await protocol_workflow(client)
+        await protocol_workflow(client, approver(service, principal))
         service.revoke_key(principal, credential["key_id"], "team")
         result = await client.call_tool("musclememory_inspect", {"procedure_token": "unknown"})
         assert result.is_error
@@ -144,7 +151,7 @@ async def test_stdio_rest_gateway_contract_and_revocation(
 
 
 @pytest.mark.parametrize("mode", ["legacy", "auto"])
-async def test_streamable_http_official_client(remote_server, credential, mode):
+async def test_streamable_http_official_client(remote_server, credential, mode, service, principal):
     async with httpx2.AsyncClient(
         headers={"Authorization": f"Bearer {credential['api_key']}"}
     ) as http:
@@ -157,4 +164,4 @@ async def test_streamable_http_official_client(remote_server, credential, mode):
                 yield streams[0], streams[1]
 
             async with Client(transport_streams(), mode=mode) as client:
-                await protocol_workflow(client)
+                await protocol_workflow(client, approver(service, principal))

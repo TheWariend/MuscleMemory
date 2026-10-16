@@ -286,3 +286,39 @@ def test_training_cannot_validate_itself_and_metrics_are_checked(service, princi
     request.performance_metrics.observed.tool_calls = 0
     with pytest.raises(DomainError, match="must match trace"):
         service.evaluate(principal, request)
+
+
+def test_every_skill_waits_for_a_person_and_agents_cannot_approve(service, principal):
+    procedure = learned(service, principal, approve=False)["procedure_token"]
+    for index in range(2):
+        evaluate(service, principal, procedure, f"check-{index}")
+    assert recall(service, principal)["no_match"]  # checked, but not approved
+    agent = service.authenticate(
+        service.issue_key("tenant-a", {"team": ["read", "write"]})["api_key"], rate_limit=False
+    )
+    with pytest.raises(DomainError):
+        service.approve(agent, procedure)
+    service.approve(principal, procedure)
+    assert not recall(service, principal)["no_match"]
+
+
+def test_a_retired_skill_stays_retired(service, principal):
+    procedure = validated(service, principal)["procedure_token"]
+    service.retire(principal, procedure)
+    assert recall(service, principal)["no_match"]
+    with pytest.raises(DomainError, match="removed"):
+        learned(service, principal, token="relearn")
+    with pytest.raises(DomainError, match="removed|retired"):
+        trace(service, principal, "revision")
+        service.learn(
+            principal,
+            LearnInput(
+                run_token="revision",
+                completion_proof={
+                    "succeeded": True,
+                    "evidence_event_ids": ["read"],
+                    "summary": "Manifest inspected",
+                },
+                learning_policy={"revise_procedure_token": procedure},
+            ),
+        )
