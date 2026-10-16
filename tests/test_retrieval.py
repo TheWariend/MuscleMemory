@@ -1,4 +1,5 @@
 from dataclasses import replace
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -23,6 +24,60 @@ def test_rrf_merges_independent_rankings_once():
     assert scores["a"] == pytest.approx(1 / 61)
     assert scores["b"] == pytest.approx(2 / 62)
     assert scores["b"] > scores["a"] == scores["c"]
+
+
+def test_tied_fusion_uses_relevance_before_alphabetical_title():
+    from musclememory.retrieval import rank_candidates
+    from musclememory.storage import utcnow
+
+    now = utcnow()
+
+    def candidate(token, title, text, vector):
+        definition = {
+            "title": title,
+            "intent_signature": title,
+            "steps": [],
+            "required_capabilities": [],
+            "required_permissions": [],
+            "environment_requirements": {},
+        }
+        return (
+            SimpleNamespace(procedure_token=token, lifecycle="active", reviewed_at=now),
+            SimpleNamespace(
+                definition=definition,
+                search_text=text,
+                embedding=vector,
+                embedding_payload=None,
+                embedding_space="test-space",
+                embedding_dimensions=2,
+                validated_at=now,
+                created_at=now,
+                test_proven_at=now,
+                successes=2,
+                failures=0,
+                validation_status="validated",
+                version=1,
+                capability_signature=[],
+            ),
+        )
+
+    lexical = candidate("a", "Arrange a courier", "arrange arrange arrange courier", [0, 1])
+    semantic = candidate(
+        "z", "Request a video appointment", "request video appointment", [0.8, 0.6]
+    )
+    settings = Settings(
+        embedding_provider="remote",
+        embedding_url="https://provider.test/embed",
+        embedding_dim=2,
+        min_match=0.1,
+    )
+    for candidates in [[lexical, semantic], [semantic, lexical]]:
+        ranked = rank_candidates(
+            candidates, "arrange virtual consultation", [1, 0], PROFILE, settings, "test-space"
+        )
+        assert ranked[0]["score"] == ranked[1]["score"]
+        assert ranked[0]["procedure_token"] == "z"
+        assert ranked[0]["relevance"] > ranked[1]["relevance"]
 
 
 def test_graph_prunes_failed_branch_preserves_parallel_sibling():

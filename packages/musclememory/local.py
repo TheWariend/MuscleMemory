@@ -162,7 +162,43 @@ def agent_key(service, settings_file, agent):
     return path, issued["api_key"]
 
 
-def connect(agent, project="."):
+def add_browser(agent, project, hooks):
+    """Register the MuscleMemory browser MCP server in the agent's project config."""
+    import shutil
+    import sys
+
+    command = [sys.executable, "-m", "musclememory", "browser", "--config", str(hooks)]
+    root = Path(project).resolve()
+    if agent == "codex":
+        path = root / ".codex" / "config.toml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        text = path.read_text() if path.exists() else ""
+        if "[mcp_servers.musclememory_browser]" in text:
+            return path
+        if path.exists():
+            shutil.copy2(path, path.with_name(path.name + ".musclememory-backup"))
+        args = ", ".join(json.dumps(part) for part in command[1:])
+        path.write_text(
+            text.rstrip("\n")
+            + ("\n\n" if text.strip() else "")
+            + "[mcp_servers.musclememory_browser]\n"
+            + f"command = {json.dumps(command[0])}\nargs = [{args}]\n"
+        )
+        return path
+    path = root / (".mcp.json" if agent == "claude" else ".cursor/mcp.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.loads(path.read_text()) if path.exists() else {}
+    if path.exists():
+        shutil.copy2(path, path.with_name(path.name + ".musclememory-backup"))
+    data.setdefault("mcpServers", {})["musclememory-browser"] = {
+        "command": command[0],
+        "args": command[1:],
+    }
+    path.write_text(json.dumps(data, indent=2) + "\n")
+    return path
+
+
+def connect(agent, project=".", browser=False):
     from .client_hooks import install_hooks
     from .config import Settings
     from .service import MemoryService
@@ -212,6 +248,9 @@ def connect(agent, project="."):
     print(f"✓ {NAMES[agent]} is connected in {Path(project).resolve()}")
     for path in installed:
         print(f"  hooks: {path}")
+    if browser:
+        print(f"  browser: {add_browser(agent, project, hooks)}")
+        print('  (needs: pip install "thewariend-musclememory[browser]")')
     print(f"\nRestart {NAMES[agent]}, then give it a task. Sessions show up under Activity.")
     if not healthy(settings_file["url"]):
         print("MuscleMemory isn't running yet. Run: musclememory start")

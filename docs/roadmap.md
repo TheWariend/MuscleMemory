@@ -38,6 +38,10 @@
 - A dashboard with skills (in plain words: files to look at, the exact edits, the test,
   and which agents checked it), a playground, activity and API keys.
 - Exporting proven skills to Codex or Claude Code as `SKILL.md`.
+- A browser MCP server for Claude Code, Codex and Cursor: it learns skills from the
+  agent's browsing, checks them twice, and lets the agent run a proven skill, which
+  does every step with checks except the final submit. See [browser agents](integrations.md#browser-agents).
+- Automatic approval as an option (`MM_AUTO_APPROVE`); the two checks stay required.
 
 ## Next
 
@@ -53,6 +57,8 @@
 5. **A larger Claude Code benchmark**, with repeats and skills learned by Claude Code
    itself, to follow the early sonnet-01 run.
 6. **Scale results** for 100k stored skills on SQLite and PostgreSQL.
+7. **A browser evaluation.** Memory off against running proven skills, on longer
+   forms and multi-step flows, with several runs per arm.
 
 ## Later
 
@@ -78,5 +84,8 @@
   when a project's skills should be isolated.
 - Error-triggered notes before trust are design-only; existing notes remain within
   eligible, approved skills.
-- A skill is a suggestion. Agents still read the current files and ask for approval
-  as usual. MuscleMemory never replays actions.
+- Coding skills are guidance: the agent makes every change. Browser skills run only
+  when the agent asks, step by step with checks, and the agent always submits.
+- The browser reads visible form controls and `aria-label` sections. Iframes, shadow
+  DOM and screenshot-only pages aren't supported, and exact label matching leaves
+  renamed fields to the agent.

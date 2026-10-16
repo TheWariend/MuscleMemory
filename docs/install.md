@@ -199,6 +199,7 @@ SELECT/INSERT/UPDATE/DELETE. Each process uses up to 15 database connections.
 | `MM_MIN_RELIABILITY` | `0.65` | Smoothed reliability needed to be ready |
 | `MM_STALE_DAYS` | `90` | Days before checks count as stale |
 | `MM_REQUIRE_PROVEN_TEST` | `false` | When true, hand out a skill whose test already existed only after a session saw that test fail on the original code and pass after the fix |
+| `MM_AUTO_APPROVE` | `false` | When true, skills don't wait for a person's OK; they still need their two independent checks |
 | `MM_TRACE_RETENTION_DAYS` | `30` | Days recorded sessions are kept |
 | `MM_REQUESTS_PER_MINUTE` | `120` | Rate limit per key |
 | `MM_BOUNDARY_LLM_URL` / `_KEY` / `_MODEL` | none / none / `boundary-refinement` | Optional HTTPS note refinement (value-free) |

@@ -50,6 +50,12 @@ def main():
     connect = sub.add_parser("connect", help="Connect an agent in this project, no keys to copy")
     connect.add_argument("agent", choices=["claude", "codex", "cursor", "cleanslate"])
     connect.add_argument("--project", default=".")
+    connect.add_argument(
+        "--browser", action="store_true", help="Also add the MuscleMemory browser for this agent"
+    )
+    browser = sub.add_parser("browser", help="Run the MuscleMemory browser MCP server (stdio)")
+    browser.add_argument("--config", required=True, help="Agent config from `connect`")
+    browser.add_argument("--show", action="store_true", help="Show the browser window")
     dash = sub.add_parser("dashboard", help="Open the dashboard, already signed in")
     dash.add_argument("--no-browser", action="store_true", help="Print the sign-in link instead")
     export = sub.add_parser("export", help="Add a Ready skill to Codex or Claude Code as SKILL.md")
@@ -73,6 +79,11 @@ def main():
     reindex.add_argument("--namespace", required=True)
     sub.add_parser("doctor", help="Check database and configured retrieval provider")
     arguments = parser.parse_args()
+    if arguments.command == "browser":
+        from .browser_mcp import serve
+
+        serve(arguments.config, headless=not arguments.show)
+        return
     if arguments.command == "export":
         from . import local
 
@@ -84,7 +95,7 @@ def main():
         if arguments.command == "init":
             local.init(arguments.port, arguments.namespace)
         elif arguments.command == "connect":
-            local.connect(arguments.agent, arguments.project)
+            local.connect(arguments.agent, arguments.project, browser=arguments.browser)
         elif arguments.command == "dashboard":
             local.dashboard(open_browser=not arguments.no_browser)
         else:

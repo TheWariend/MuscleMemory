@@ -89,7 +89,9 @@ flowchart LR
   it was learned (hooks, SDK, MCP or the API), and so does every new version. Only the
   dashboard can approve; an agent's own key can't. Skills you delete or retire stay
   removed: the same skill isn't learned again. Agents still read the current files and ask for approval as usual.
-  MuscleMemory never replays actions.
+  MuscleMemory never re-runs an old session. Coding skills are guidance; browser skills
+  run only when the agent asks, step by step with checks, and the agent always submits.
+  Set `MM_AUTO_APPROVE=true` to skip your OK; skills still need their two checks.
 - **Checks current files.** Native hooks require the files a skill found in place to
   still exist (files it created may not exist yet) and at least one stored before or
   after edit to match. If none match, they stay quiet; partial
@@ -115,6 +117,7 @@ More detail in [How it works](https://github.com/TheWariend/MuscleMemory/blob/ma
 | Cursor | `musclememory connect cursor` installs capture hooks |
 | CleanSlate | `musclememory connect cleanslate` wires its host stream |
 | Any MCP client | Five tools: recall, observe, learn, evaluate, inspect |
+| Browser agents | `musclememory connect <agent> --browser` adds a browser that learns skills and runs them on request |
 | Your own agent | Python and TypeScript SDKs |
 
 See [Integrations](https://github.com/TheWariend/MuscleMemory/blob/main/docs/integrations.md).

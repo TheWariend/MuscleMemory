@@ -276,6 +276,59 @@ class ObservedRun:
 
         return decorator
 
+    def record_tool_result(
+        self,
+        capability,
+        arguments,
+        response,
+        *,
+        status="success",
+        outcome_verified=False,
+        duration_ms=0,
+        effect="read",
+        permission=None,
+        dependencies=None,
+        retry_of=None,
+    ):
+        """Capture an external harness's actual result without executing its tool.
+
+        Browser hosts can attach post-action readback to arguments only after the
+        action finishes. The caller owns execution and verification; external
+        outcomes default to unverified. The existing queue, limits and redaction
+        apply, including the optional durable spool.
+        """
+        with self._lock:
+            self._ensure_open()
+            if self._active:
+                raise RuntimeError("External results cannot overlap an active instrumented tool")
+            tool = self.profile.bindings.get(capability)
+            if not tool:
+                raise ValueError("Bind the canonical capability before recording a result")
+            if permission and permission not in self.profile.permissions:
+                raise ValueError("Capture permission is absent from runtime profile")
+            known = {event["event_id"] for event in self.events}
+            if any(dependency not in known for dependency in (dependencies or [])):
+                raise ValueError("Capture dependencies must reference earlier events")
+            if retry_of and not any(
+                event["event_id"] == retry_of and event["status"] == "failure"
+                for event in self.events
+            ):
+                raise ValueError("Capture retry must reference an earlier failure")
+            return self._emit(
+                kind="tool",
+                tool_name=tool,
+                capability=capability,
+                arguments=safe_json(arguments),
+                response=safe_json(response),
+                status=status,
+                outcome_verified=outcome_verified,
+                duration_ms=duration_ms,
+                effect=effect,
+                permission=permission,
+                dependencies=dependencies or [],
+                retry_of=retry_of,
+            )
+
     def complete(self, succeeded=True):
         with self._lock:
             if self._active:

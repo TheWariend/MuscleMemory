@@ -53,7 +53,8 @@ judgement.
 - **People stay in charge.** Every skill waits for a person's OK, and agents cannot give it.
 - **Guidance, never replay.** Agents receive a short pointer: files, the key edits,
   the test and what to avoid. They still read the current code and ask for approval as usual.
-  MuscleMemory runs nothing.
+  For coding, MuscleMemory runs nothing. In the browser, an agent can ask it to carry out
+  a proven skill step by step with checks; the agent always does the final submit.
 - **Quiet by default.** If no skill clears the bar, nothing is added and the agent
   pays no extra tokens.
 - **Failures are data.** A failed attempt next to a working one shows what to avoid.

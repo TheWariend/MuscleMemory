@@ -12,6 +12,7 @@ skill. Later sessions on the same work get a short pointer to that skill.
 | CleanSlate | Host stream (`musclememory connect cleanslate`) | Native runtime stream, 63 mapped tools | Through the host's context callback |
 | Any MCP client | MCP over HTTP or stdio | Only what the agent reports with `musclememory_observe` | When the agent calls `musclememory_recall` |
 | Python agent | Python SDK (`ObservedRun`) | Calls to tools you wrap | When you call recall |
+| Python browser host | `BrowserMemorySession` | Actual actions with before/after browser readback | Grounded against each current observation |
 | TypeScript agent | TypeScript SDK (`ObservedRun`) | Calls to tools you wrap | When you call recall |
 
 ## Set up once
@@ -182,6 +183,74 @@ await run.complete();
 SDK runs are not learned automatically. Your code decides whether a task succeeded
 and calls `musclememory_learn`, then `musclememory_evaluate` for later runs.
 
+## Browser agents
+
+MuscleMemory ships a browser MCP server for agents that browse: Claude Code, Codex,
+Cursor or any MCP client. It is a normal browser for the agent, and it learns while
+the agent works.
+
+```sh
+pip install "thewariend-musclememory[browser]"
+playwright install chromium   # skip if Google Chrome is installed
+musclememory connect claude --browser   # or codex, cursor
+```
+
+`--browser` adds the server next to the hooks: `.mcp.json` for Claude Code,
+`.codex/config.toml` for Codex, `.cursor/mcp.json` for Cursor. Existing entries are
+kept and a backup is saved. Restart the agent.
+
+**Tools**
+
+| Tool | What it does |
+| --- | --- |
+| `browser_open(url, task)` | Opens a page. The first call of a task needs a one-line `task`. |
+| `browser_read()` | Reads the page: text, notices and controls with fresh refs. |
+| `browser_act(ref, action, value)` | Fills text, selects an option by label, or clicks. |
+| `musclememory_find_skills()` | Proven skills for the task, with their start page and inputs. |
+| `musclememory_run_skill(skill, inputs)` | Carries out a proven skill on the open page. |
+| `browser_done(succeeded)` | Finishes the task, so MuscleMemory can learn or count a check. |
+
+**How a browser skill is learned and trusted**
+
+1. The agent does a task. Every action is recorded with the page before and after.
+2. `browser_done(succeeded=True)` counts only if the final click visibly changed the
+   site: a new message appeared or a new page opened. Otherwise nothing is learned.
+3. The run becomes a skill. Every value the agent entered becomes an input, named
+   after its field. A value used twice (an email and its confirmation) is one input.
+4. Two later runs of the same task that end with the same result count as its checks,
+   whether the agent did them by hand or with the skill.
+5. A person approves it in the dashboard, unless approval is automatic
+   (`MM_AUTO_APPROVE=true`). The two checks are required either way.
+
+One failed run with a skill flags it, as with coding skills. Deleted or retired
+skills are not learned again.
+
+**Running a skill**
+
+`musclememory_run_skill` does the skill's steps on the current page and checks each
+one. It only enters the inputs the agent passed, never values from an earlier visit.
+It needs the skill's page and exactly one matching control for every step, reads back
+every value, and confirms each click moved the page on. It never does the final
+step: the agent checks the page and submits. A field it can't find (maybe renamed)
+is left for the agent with the value it needs; after filling it, the agent calls the
+skill again and it carries on. Another page, two matching controls, a value that
+doesn't stick or a click that doesn't move the page on stops it, with the reason.
+
+**Limits**
+
+Pages are read from their visible form controls and `aria-label` sections. Iframes,
+shadow DOM, canvas-only pages and screenshots aren't supported. A site's success
+message is the evidence a run worked; a message alone can't prove the saved record
+is right, so approve skills for important forms with care.
+
+### From your own browser code
+
+`musclememory.browser_session.BrowserMemorySession` connects a browser controller you
+own to the Python SDK: record actions with before and after `BrowserState`
+observations, get current-page guidance, and learn after your own domain check.
+`musclememory.browser.carry_out(definition, values, observe, act)` runs a proven
+skill through your controller with the same checks as the MCP server.
+
 ## Capture details
 
 - **Redaction.** Hooks and SDKs redact secrets locally before anything is stored or
@@ -211,6 +280,7 @@ and calls `musclememory_learn`, then `musclememory_evaluate` for later runs.
   `write` or `destructive`).
 - **Interrupted sessions.** A session that is interrupted rather than stopped is
   never verified.
-- **No replay.** MuscleMemory only suggests. The agent reads the pointer, checks the
-  current files and follows your normal approvals. Remembered steps never run on
-  their own.
+- **No replay of old sessions.** For coding, MuscleMemory only suggests: the agent reads
+  the pointer, checks the current files and follows your normal approvals. In the
+  browser, a proven skill runs only when the agent calls it, step by step with
+  checks, and the agent always does the final submit.

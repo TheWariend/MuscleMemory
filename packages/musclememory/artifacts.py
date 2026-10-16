@@ -329,6 +329,23 @@ def patch_edits(arguments, capability):
 
 def search_document(definition):
     experience = definition.get("experience") or extract_experience(definition["steps"])
+    browser_labels = []
+    for step in definition["steps"]:
+        if step.get("capability") != "browser.act":
+            continue
+        context = step.get("arguments", {}).get("mm_browser")
+        if not isinstance(context, dict) or context.get("version") != 1:
+            continue
+        target = context.get("target")
+        if not isinstance(target, dict):
+            continue
+        names = [target.get("name")]
+        landmarks = target.get("landmarks", [])
+        if isinstance(landmarks, list) and len(landmarks) <= 12:
+            names.extend(landmarks)
+        browser_labels.extend(
+            name for name in names if isinstance(name, str) and 0 < len(name) <= 300
+        )
     return "\n".join(
         [
             definition["intent_signature"],
@@ -336,6 +353,7 @@ def search_document(definition):
             *experience["reads"],
             *experience["writes"],
             *experience["verification_commands"],
+            *dict.fromkeys(browser_labels),
         ]
     )[:16000]
 

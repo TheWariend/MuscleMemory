@@ -575,6 +575,7 @@ def rank_candidates(candidates, query, vector, profile, settings, embedding_spac
         results,
         key=lambda item: (
             -item["score"],
+            -item["relevance"],
             item["definition"]["intent_signature"],
             item["procedure_token"],
         ),

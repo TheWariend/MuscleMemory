@@ -241,7 +241,9 @@ stopped server and is delivered later with `musclememory hooks flush`.
 
 ## What it does not do
 
-- It does not replay actions. Agents get guidance, not commands to execute.
+- It does not re-run old sessions. Coding agents get guidance, not commands to execute.
+  Browser agents can ask the MuscleMemory browser to carry out a proven skill; it checks
+  every step and leaves the final submit to the agent.
 - It does not call a model by default. Embeddings run locally; the only remote
   calls are ones you configure (`MM_EMBEDDING_URL`, `MM_BOUNDARY_LLM_URL`).
 - It does not learn from sessions with missing tool calls, from sessions where
