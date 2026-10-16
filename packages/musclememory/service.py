@@ -547,15 +547,17 @@ class MemoryService:
                     )
                 procedure.current_version += 1
                 procedure.lifecycle = "provisional"
-                procedure.reviewed_at = None  # a new version needs a new OK
+                # A new version needs a new OK, unless approval is automatic.
+                procedure.reviewed_at = utcnow() if self.settings.auto_approve else None
                 procedure.updated_at = utcnow()
             else:
-                # Every skill waits for a person's OK, however it was learned.
+                # Every skill waits for a person's OK, however it was learned, unless the
+                # installation approves automatically. Its checks are still required.
                 procedure = Procedure(
                     tenant=principal.tenant,
                     namespace=run.namespace,
                     current_version=1,
-                    reviewed_at=None,
+                    reviewed_at=utcnow() if self.settings.auto_approve else None,
                 )
                 session.add(procedure)
                 session.flush()

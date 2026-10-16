@@ -322,3 +322,14 @@ def test_a_retired_skill_stays_retired(service, principal):
                 learning_policy={"revise_procedure_token": procedure},
             ),
         )
+
+
+def test_auto_approve_skips_only_the_persons_ok(service, principal):
+    from dataclasses import replace
+
+    service.settings = replace(service.settings, auto_approve=True)
+    procedure = learned(service, principal, approve=False)["procedure_token"]
+    assert recall(service, principal)["no_match"]  # approved, but not yet checked twice
+    for index in range(2):
+        evaluate(service, principal, procedure, f"check-{index}")
+    assert not recall(service, principal)["no_match"]

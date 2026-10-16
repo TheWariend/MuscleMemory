@@ -17,6 +17,8 @@ class Settings:
     min_match: float = 0.25
     stale_days: int = 90
     require_proven_test: bool = False
+    # Skip the person's OK; skills still need their independent passing checks.
+    auto_approve: bool = False
     trace_retention_days: int = 30
     requests_per_minute: int = 120
     candidate_limit: int = 80
@@ -51,6 +53,7 @@ class Settings:
             stale_days=int(os.getenv("MM_STALE_DAYS", "90")),
             require_proven_test=os.getenv("MM_REQUIRE_PROVEN_TEST", "false").lower()
             in {"1", "true", "yes"},
+            auto_approve=os.getenv("MM_AUTO_APPROVE", "false").lower() in {"1", "true", "yes"},
             trace_retention_days=int(os.getenv("MM_TRACE_RETENTION_DAYS", "30")),
             requests_per_minute=int(os.getenv("MM_REQUESTS_PER_MINUTE", "120")),
             link_fanout_limit=int(os.getenv("MM_LINK_FANOUT_LIMIT", "8")),
