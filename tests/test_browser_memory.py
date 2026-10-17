@@ -520,6 +520,13 @@ def test_carry_out_only_enters_values_the_agent_passed():
     assert ("click", "s", None) not in page.actions
 
 
+def test_carry_out_leaves_a_field_the_agent_passed_empty():
+    page = Portal()
+    result = carry_out(learned_portal(), {"email": "", "code": "CODE-2"}, page.observe, page.act)
+    assert result["left_for_you"] == [{"field": "Email", "why": "needs your input"}]
+    assert "Email" not in result["done"] and page.actions == []
+
+
 def test_a_renamed_field_is_left_for_the_agent_and_the_skill_resumes():
     page = Portal(email_label="Contact email")
     first = carry_out(learned_portal(), NEW, page.observe, page.act)
@@ -543,3 +550,31 @@ def test_carry_out_stops_at_the_first_doubt(page, reason):
     result = carry_out(learned_portal(), NEW, page.observe, page.act)
     assert result["stopped"] == reason
     assert ("click", "s", None) not in page.actions
+
+
+def test_navigation_counts_as_done_when_a_few_new_fields_were_renamed():
+    from musclememory.browser import BrowserState, _moved_on
+
+    def box(name):
+        return {"role": "textbox", "name": name, "landmarks": ["main"]}
+
+    learned = ["Application reference", "Given name", "Family name", "Cost center"]
+    context = {
+        "page": ["https", "portal.test", 443, "/"],
+        "postcondition": {
+            "kind": "state",
+            "page": ["https", "portal.test", 443, "/form"],
+            "appeared": [box(n) for n in learned],
+            "disappeared": [{"role": "link", "name": "Equipment loan", "landmarks": ["main"]}],
+        },
+    }
+
+    def state(names, path="/form"):
+        controls = [{**box(n), "ref": str(i)} for i, n in enumerate(names)]
+        return BrowserState(url="https://portal.test" + path, controls=controls)
+
+    renamed = ["Service application ID", "Given name", "Family name", "Billing cost center"]
+    assert _moved_on(context, state(learned))
+    assert _moved_on(context, state(renamed))
+    assert not _moved_on(context, state(["Service application ID", "Given name"]))
+    assert not _moved_on(context, state(learned, path="/other"))

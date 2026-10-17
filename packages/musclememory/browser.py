@@ -250,9 +250,12 @@ def _moved_on(context, state):
         post.get("appeared") or post.get("disappeared") or post["page"] != context["page"]
     ):
         return False
+    appeared = post.get("appeared", [])
+    found = sum(1 for t in appeared if matching_controls(t, state))
     return (
         page_identity(state.url) == post["page"]
-        and all(matching_controls(t, state) for t in post.get("appeared", []))
+        # Most of what appeared is enough: a few renamed labels don't undo the click.
+        and (not appeared or (found and found * 2 >= len(appeared)))
         and not any(matching_controls(t, state) for t in post.get("disappeared", []))
     )
 
@@ -309,7 +312,8 @@ def carry_out(definition, values, observe, act):
         if action in {"fill", "select"}:
             value = step.arguments.get("value")
             name = value.get("$mm_parameter") if isinstance(value, dict) else None
-            if name is None or name not in values:
+            # An empty value means the agent will decide; it never counts as entered.
+            if name is None or str(values.get(name, "")) == "":
                 if len(matches) == 1 and matches[0].value:
                     done.append(target.name)  # the agent already filled it
                 else:
