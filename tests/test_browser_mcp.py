@@ -232,3 +232,157 @@ def test_passwords_are_never_recorded_and_left_for_the_agent(client, service, pr
     assert memory.driver.values["code"] == ""  # never typed by the skill
     stored = service.inspect(principal, InspectInput(procedure_token=token))
     assert "hunter2-secret" not in str(stored)
+
+
+def test_no_skills_hides_tools_and_hint_but_still_learns(client, tmp_path):
+    memory = BrowserMemory(client, "team", FakeDriver(), state_dir=tmp_path, skills_enabled=False)
+
+    async def scenario():
+        server = build_browser_mcp(memory)
+        names = {t.name for t in await server.list_tools()}
+        assert names == {"browser_open", "browser_read", "browser_act", "browser_done"}
+        assert "musclememory_find_skills" not in server.instructions
+        result = await by_hand(memory, "a@x.test", "Basic", "C-1")
+        assert result["learned"]
+        await memory_open(memory, "Apply for a plan")
+        memory.skills = [
+            {"start": ["http", "portal.test", 80, "/apply"], "title": "Hidden", "skill": "hidden"}
+        ]
+        assert "skill" not in await memory.snapshot()
+
+    asyncio.run(scenario())
+
+
+def test_tool_log_append_errors_and_secret_redaction(client, tmp_path):
+    import json
+
+    from musclememory.browser_mcp import FILLED, log_browser_call
+
+    memory = BrowserMemory(client, "team", FakeDriver(code_label="Password"))
+    path = tmp_path / "calls.jsonl"
+    path.write_text("")
+
+    async def scenario():
+        await memory_open(memory, "Test")
+        memory.refs["secret"] = {"name": "Password"}
+
+        async def browser_act(ref: str, action: str, value: str = "") -> dict:
+            if value == "explode":
+                raise ValueError(value)
+            return {"error": value} if value == "bad" else {}
+
+        async def act(ref, action, value):
+            return await log_browser_call(
+                "browser_act",
+                dict(ref=ref, action=action, value=value),
+                memory,
+                path,
+                lambda: browser_act(ref, action, value),
+            )
+
+        await act(ref="secret", action="fill", value="never-log-this")
+        await act(ref="1:0", action="fill", value="ordinary")
+        await act(ref="1:0", action="fill", value="bad")
+        with pytest.raises(ValueError):
+            await act(ref="secret", action="fill", value="explode")
+
+        async def musclememory_run_skill(skill: str, inputs: dict) -> dict:
+            return {}
+
+        inputs = {"password": "secret-value", "name": "Ari"}
+        await log_browser_call(
+            "musclememory_run_skill",
+            {"skill": "test", "inputs": inputs},
+            memory,
+            path,
+            lambda: musclememory_run_skill("test", inputs),
+        )
+        page = await memory.snapshot()
+        page = await memory.act(ref(page, "Continue"), "click")
+        # Directly snapshot a filled secret to check the page response too.
+        memory.driver.stage = "review"
+        memory.driver.values["code"] = "also-secret"
+        assert "also-secret" not in str(await memory.snapshot())
+
+    asyncio.run(scenario())
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert len(rows) == 5
+    assert rows[0]["arguments"]["value"] == FILLED
+    assert rows[1]["arguments"]["value"] == "ordinary"
+    assert rows[2]["error"] == "tool_error"
+    assert rows[3]["error"] == "ValueError"
+    assert rows[4]["arguments"]["inputs"] == {"password": FILLED, "name": "Ari"}
+    assert all(row["duration_ms"] >= 0 for row in rows)
+    assert "never-log-this" not in path.read_text()
+    assert "secret-value" not in path.read_text()
+
+
+def test_browser_cli_flags(monkeypatch):
+    from musclememory import browser_mcp, cli
+
+    calls = []
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "musclememory",
+            "browser",
+            "--config",
+            "config.json",
+            "--no-skills",
+            "--log",
+            "calls.jsonl",
+        ],
+    )
+    monkeypatch.setattr(browser_mcp, "serve", lambda *args, **kwargs: calls.append((args, kwargs)))
+    cli.main()
+    assert calls == [
+        (("config.json",), {"headless": True, "no_skills": True, "log_path": "calls.jsonl"})
+    ]
+
+
+def test_logged_tools_work_through_mcp_dispatch(client, tmp_path):
+    import json
+
+    memory = BrowserMemory(client, "team", FakeDriver())
+    path = tmp_path / "mcp.jsonl"
+
+    async def scenario():
+        server = build_browser_mcp(memory, log_path=path)
+        await memory_open(memory, "Apply")
+        page = await memory.snapshot()
+        await server.call_tool(
+            "browser_act", {"ref": ref(page, "Email"), "action": "fill", "value": "ari@test"}
+        )
+        await server.call_tool("musclememory_find_skills", {})
+        return {t.name: t.input_schema for t in await server.list_tools()}
+
+    schemas = asyncio.run(scenario())
+    assert set(schemas["browser_act"]["properties"]) == {"ref", "action", "value"}
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [r["tool"] for r in rows] == ["browser_act", "musclememory_find_skills"]
+    assert not any(r["error"] for r in rows)
+
+
+def test_invalid_and_unknown_mcp_calls_are_counted_once(client, tmp_path):
+    import json
+
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    memory = BrowserMemory(client, "team", FakeDriver())
+    path = tmp_path / "invalid.jsonl"
+
+    async def scenario():
+        server = build_browser_mcp(memory, log_path=path)
+        with pytest.raises(ToolError):
+            await server.call_tool(
+                "browser_act", {"ref": ["bad-ref"], "action": "fill", "value": "do-not-log"}
+            )
+        with pytest.raises(ToolError):
+            await server.call_tool("unknown", {"password": "do-not-log"})
+        await server.call_tool("browser_open", {"url": "file:///forbidden"})
+
+    asyncio.run(scenario())
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [r["tool"] for r in rows] == ["browser_act", "unknown", "browser_open"]
+    assert all(r["error"] for r in rows)
+    assert "do-not-log" not in path.read_text()

@@ -12,6 +12,7 @@ submit. The agent always submits.
 import asyncio
 import json
 import re
+import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -120,7 +121,8 @@ def page_url(identity):
 class BrowserMemory:
     """One agent's browser and its current task. All tools go through this object."""
 
-    def __init__(self, client, namespace, driver, *, state_dir=None):
+    def __init__(self, client, namespace, driver, *, state_dir=None, skills_enabled=True):
+        self.skills_enabled = skills_enabled
         self.client, self.namespace, self.driver = client, namespace, driver
         self.state_dir = Path(state_dir) if state_dir else None
         self.run = self.skills = self.used = None
@@ -145,9 +147,9 @@ class BrowserMemory:
                     "enabled": item["enabled"],
                 }
             )
-            entry = {k: v for k, v in controls[-1].items() if v not in ("", True)}
             if sensitive(item["name"]) and controls[-1]["value"] and item["role"] == "textbox":
                 controls[-1]["value"] = FILLED  # only that it's filled, never the secret
+            entry = {k: v for k, v in controls[-1].items() if v not in ("", True)}
             entry["section"] = " > ".join(entry.pop("landmarks", []))
             if item.get("options"):
                 entry["options"] = item["options"][:40]
@@ -165,6 +167,8 @@ class BrowserMemory:
         return page
 
     def _skill_hint(self):
+        if not self.skills_enabled:
+            return None
         try:
             here = page_identity(self.state.url)
         except ValueError:
@@ -216,6 +220,8 @@ class BrowserMemory:
         self.task, self.used, self.skills = task, None, []
         try:
             await asyncio.to_thread(self.run.flush)
+            if not self.skills_enabled:
+                return
             found = await asyncio.to_thread(
                 self.client.musclememory_recall,
                 intent_text=task,
@@ -425,23 +431,104 @@ class BrowserMemory:
         return [(token, None) for token in index.get(self._key(run), [])]
 
 
-def build_browser_mcp(memory):
+async def log_browser_call(tool, arguments, memory, path, execute):
+    """Count the public invocation before schema validation, including failed calls.
+
+    Skill internals are not extra MCP calls. Resolve a field name before acting,
+    since refs expire on the next page read. Never log errors that may echo inputs.
+    """
+
+    def redact(value):
+        if isinstance(value, dict):
+            return {k: FILLED if sensitive(k) else redact(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [redact(v) for v in value]
+        return value
+
+    arguments = redact(arguments)
+    if tool == "browser_act" and arguments.get("action") == "fill":
+        ref = arguments.get("ref")
+        control = memory.refs.get(ref, {}) if isinstance(ref, str) else {}
+        if sensitive(control.get("name", "")) or not control:
+            arguments["value"] = FILLED
+    started, error = time.monotonic(), None
+    try:
+        result = await execute()
+        payload = (
+            result if isinstance(result, dict) else getattr(result, "structured_content", None)
+        )
+        if payload is None:
+            for block in getattr(result, "content", []):
+                if getattr(block, "type", None) == "text":
+                    try:
+                        payload = json.loads(block.text)
+                    except ValueError:
+                        continue
+                    if isinstance(payload, dict) and payload.get("error"):
+                        break
+        if getattr(result, "is_error", False) or (
+            isinstance(payload, dict) and payload.get("error")
+        ):
+            error = "tool_error"
+        return result
+    except BaseException as exc:
+        error = type(exc).__name__
+        raise
+    finally:
+        with Path(path).open("a", encoding="utf-8") as log:
+            log.write(
+                json.dumps(
+                    {
+                        "tool": tool,
+                        "arguments": arguments,
+                        "duration_ms": round((time.monotonic() - started) * 1000, 3),
+                        "error": error,
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+
+
+def build_browser_mcp(memory, *, log_path=None):
     from mcp.server import MCPServer
     from mcp.types import ToolAnnotations
 
-    server = MCPServer(
+    class BrowserServer(MCPServer):
+        async def call_tool(self, name, arguments, context=None):
+            async def execute():
+                return await super(BrowserServer, self).call_tool(name, arguments, context)
+
+            if log_path:
+                return await log_browser_call(name, arguments, memory, log_path, execute)
+            return await execute()
+
+    server = BrowserServer(
         "musclememory-browser",
         instructions=(
-            "A browser that learns. Start each task with browser_open(url, task). Before doing a "
-            "task by hand, call musclememory_find_skills: a proven skill does the steps for you. "
-            "Always finish with browser_done."
+            "A browser that learns. Start each task with browser_open(url, task). "
+            + (
+                "Before doing a task by hand, call musclememory_find_skills: "
+                "a proven skill does the steps for you. "
+                if memory.skills_enabled
+                else ""
+            )
+            + "Always finish with browser_done."
         ),
         log_level="CRITICAL",
     )
     read = ToolAnnotations(readOnlyHint=True, destructiveHint=False, openWorldHint=True)
     write = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=True)
 
-    @server.tool(annotations=write)
+    def tool(*, annotations):
+        def register(function):
+            if not memory.skills_enabled and function.__name__.startswith("musclememory_"):
+                return function
+            return server.tool(annotations=annotations)(function)
+
+        return register
+
+    @tool(annotations=write)
     async def browser_open(url: str, task: str = "") -> dict:
         """Open a page. The first call of a task needs `task`: one line saying what you're doing."""
         if urlsplit(url).scheme not in {"http", "https"}:
@@ -459,24 +546,24 @@ def build_browser_mcp(memory):
             )  # fmt: skip
         return page
 
-    @server.tool(annotations=read)
+    @tool(annotations=read)
     async def browser_read() -> dict:
         """Read the current page again without reloading it. Refs change on every read."""
         return await memory.snapshot()
 
-    @server.tool(annotations=write)
+    @tool(annotations=write)
     async def browser_act(ref: str, action: str, value: str = "") -> dict:
         """Act on one control by its current ref: fill text, select an option by label, or click."""
         return await memory.act(ref, action, value)
 
-    @server.tool(annotations=read)
+    @tool(annotations=read)
     async def musclememory_find_skills() -> dict:
         """Proven skills for the current task, with the inputs each one needs."""
         if memory.run is None:
             return {"error": "Start a task with browser_open(url, task) first."}
         return memory.find_skills()
 
-    @server.tool(annotations=write)
+    @tool(annotations=write)
     async def musclememory_run_skill(skill: str, inputs: dict[str, str]) -> dict:
         """Carry out a proven skill on the open page with checks. It never submits; you do.
 
@@ -486,7 +573,7 @@ def build_browser_mcp(memory):
             return {"error": "Start a task with browser_open(url, task) first."}
         return await memory.run_skill(skill, inputs)
 
-    @server.tool(annotations=write)
+    @tool(annotations=write)
     async def browser_done(succeeded: bool) -> dict:
         """Finish the task. Say whether it succeeded; MuscleMemory also checks the site's result."""
         return await memory.done(succeeded)
@@ -494,7 +581,7 @@ def build_browser_mcp(memory):
     return server
 
 
-def serve(config_path, *, headless=True):
+def serve(config_path, *, headless=True, no_skills=False, log_path=None):
     from .client_hooks import load_config
 
     config, _, _, client = load_config(config_path, "codex")
@@ -504,5 +591,8 @@ def serve(config_path, *, headless=True):
         config.get("namespace", "default"),
         PlaywrightDriver(headless=headless),
         state_dir=config.get("state_dir"),
+        skills_enabled=not no_skills,
     )
-    build_browser_mcp(memory).run(transport="stdio")
+    if log_path:
+        Path(log_path).parent.mkdir(parents=True, exist_ok=True)
+    build_browser_mcp(memory, log_path=log_path).run(transport="stdio")

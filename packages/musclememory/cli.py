@@ -56,6 +56,8 @@ def main():
     browser = sub.add_parser("browser", help="Run the MuscleMemory browser MCP server (stdio)")
     browser.add_argument("--config", required=True, help="Agent config from `connect`")
     browser.add_argument("--show", action="store_true", help="Show the browser window")
+    browser.add_argument("--no-skills", action="store_true", help="Hide skill tools and hints")
+    browser.add_argument("--log", help="Append redacted tool calls as JSON lines")
     dash = sub.add_parser("dashboard", help="Open the dashboard, already signed in")
     dash.add_argument("--no-browser", action="store_true", help="Print the sign-in link instead")
     export = sub.add_parser("export", help="Add a Ready skill to Codex or Claude Code as SKILL.md")
@@ -82,7 +84,12 @@ def main():
     if arguments.command == "browser":
         from .browser_mcp import serve
 
-        serve(arguments.config, headless=not arguments.show)
+        serve(
+            arguments.config,
+            headless=not arguments.show,
+            no_skills=arguments.no_skills,
+            log_path=arguments.log,
+        )
         return
     if arguments.command == "export":
         from . import local

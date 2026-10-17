@@ -27,3 +27,6 @@ reports/
 packages/musclememory/static/
 packages/sdk-typescript/LICENSE
 packages/sdk-typescript/NOTICE
+
+# Private runtime state for resumable browser evaluations
+benchmarks/results/browser-agent-*/**/.runtime/

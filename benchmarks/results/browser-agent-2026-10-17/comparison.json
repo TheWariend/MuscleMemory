@@ -1,0 +1,1607 @@
+{
+  "model": "gpt-6-luna",
+  "cli_version": "codex-cli 0.160.0",
+  "high": {
+    "baseline": {
+      "runs": 1,
+      "planned_runs": 1,
+      "passes": 1,
+      "pass_rate": 1.0,
+      "wrong_submissions": 0,
+      "median_browser_tool_calls": 36,
+      "median_total_tokens": 559761,
+      "median_uncached_tokens": 42641,
+      "median_wall_seconds": 55.19406983299996,
+      "find_skills_called": 0,
+      "skill_found": 0,
+      "run_skill_called": 0,
+      "skill_finished": 0
+    },
+    "skill": {
+      "runs": 1,
+      "planned_runs": 1,
+      "passes": 1,
+      "pass_rate": 1.0,
+      "wrong_submissions": 0,
+      "median_browser_tool_calls": 14,
+      "median_total_tokens": 498059,
+      "median_uncached_tokens": 47883,
+      "median_wall_seconds": 37.6644334579978,
+      "find_skills_called": 1,
+      "skill_found": 1,
+      "run_skill_called": 1,
+      "skill_finished": 0
+    }
+  },
+  "resources": [
+    {
+      "arm": "baseline",
+      "case": "score-equipment-renamed-10000-baseline",
+      "quantity": 5,
+      "submitted_resources": [
+        "Resource 07"
+      ],
+      "cheapest_eligible": "Resource 07",
+      "cheapest_total_cents": 1022,
+      "eligible_resources": [
+        {
+          "code": "Resource 07",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 323,
+          "dispatch": 409,
+          "unit": 58,
+          "total_cents": 1022
+        },
+        {
+          "code": "Resource 01",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 302,
+          "dispatch": 98,
+          "unit": 211,
+          "total_cents": 1455
+        },
+        {
+          "code": "Resource 13",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 790,
+          "dispatch": 184,
+          "unit": 136,
+          "total_cents": 1654
+        },
+        {
+          "code": "Resource 19",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 769,
+          "dispatch": 377,
+          "unit": 122,
+          "total_cents": 1756
+        }
+      ],
+      "payload_mismatches": [
+        {}
+      ]
+    },
+    {
+      "arm": "skill",
+      "case": "score-equipment-renamed-10000-skill",
+      "quantity": 5,
+      "submitted_resources": [
+        "Resource 07"
+      ],
+      "cheapest_eligible": "Resource 07",
+      "cheapest_total_cents": 1022,
+      "eligible_resources": [
+        {
+          "code": "Resource 07",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 323,
+          "dispatch": 409,
+          "unit": 58,
+          "total_cents": 1022
+        },
+        {
+          "code": "Resource 01",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 302,
+          "dispatch": 98,
+          "unit": 211,
+          "total_cents": 1455
+        },
+        {
+          "code": "Resource 13",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 790,
+          "dispatch": 184,
+          "unit": 136,
+          "total_cents": 1654
+        },
+        {
+          "code": "Resource 19",
+          "service": "Laptop delivery",
+          "region": "North",
+          "active": "Yes",
+          "capacity": 12,
+          "ready_days": 2,
+          "base": 769,
+          "dispatch": 377,
+          "unit": 122,
+          "total_cents": 1756
+        }
+      ],
+      "payload_mismatches": [
+        {}
+      ]
+    }
+  ],
+  "run_skill_replies": [
+    {
+      "call": 1,
+      "receipt_line": 9,
+      "arguments": {
+        "skill": "40de08d0-b8b7-4e73-9d51-3ad0382f1252",
+        "inputs": {
+          "applicant_details_application_reference": "APP-EQUIPMENT-10000",
+          "applicant_details_given_name": "Ari10000",
+          "applicant_details_family_name": "Patel10000",
+          "applicant_details_applicant_email": "ari.equipment.10000@example.test",
+          "applicant_details_contact_telephone": "+1-202-555-0000",
+          "applicant_details_organization": "Studio 10000",
+          "applicant_details_cost_center": "CC-10000",
+          "applicant_details_street_address": "110 Cedar Avenue",
+          "applicant_details_city": "Cedar City 10000",
+          "applicant_details_postal_code": "20000",
+          "billing_contact_given_name": "Sam10000",
+          "billing_contact_family_name": "Chen10000",
+          "billing_contact_applicant_email": "billing.equipment.10000@example.test",
+          "billing_contact_contact_telephone": "+1-303-555-0000",
+          "billing_contact_street_address": "420 Oak Street",
+          "billing_contact_city": "Oak City 10000",
+          "billing_contact_postal_code": "30000",
+          "applicant_details_region": "North",
+          "applicant_details_service_district": "North / Central",
+          "applicant_details_requested_service": "Laptop delivery",
+          "applicant_details_delivery_or_session_slot": "14:00–16:00",
+          "applicant_details_reserved_resource": ""
+        }
+      },
+      "reply": {
+        "notice": "MuscleMemory carried out the proven steps below with checks and clicked no final submit. Check the page, do anything left for you, then submit yourself.",
+        "done": [
+          "Requests",
+          "Equipment services",
+          "Equipment loan",
+          "Given name",
+          "Family name",
+          "Applicant email",
+          "Contact telephone",
+          "Organization",
+          "Street address",
+          "City",
+          "Postal code",
+          "Given name",
+          "Family name",
+          "Applicant email",
+          "Contact telephone",
+          "Street address",
+          "City",
+          "Postal code",
+          "Region",
+          "Service district",
+          "Requested service",
+          "Delivery or session slot",
+          "Reserved resource"
+        ],
+        "left_for_you": [
+          {
+            "field": "Application reference",
+            "value": "APP-EQUIPMENT-10000",
+            "why": "not found, maybe renamed"
+          },
+          {
+            "field": "Cost center",
+            "value": "CC-10000",
+            "why": "not found, maybe renamed"
+          }
+        ],
+        "stopped": "fill_these_then_run_again",
+        "at": "Continue to review",
+        "page_notices": [],
+        "next": "Fill the fields left for you, then call this skill again with the same inputs. It carries on from there (later steps and pages too) and stops before the submit."
+      },
+      "stopped_step_matches": [
+        {
+          "browser_step_1based": 26,
+          "step": {
+            "step_token": "e27",
+            "capability": "browser.act",
+            "source_tool": "browser_act",
+            "arguments": {
+              "action": "click",
+              "target": {
+                "role": "button",
+                "name": "Continue to review",
+                "landmarks": [
+                  "Service application",
+                  "Applicant details"
+                ]
+              },
+              "value": null,
+              "mm_browser": {
+                "version": 1,
+                "action": "click",
+                "page": [
+                  "http",
+                  "127.0.0.1",
+                  49444,
+                  "/forms/equipment"
+                ],
+                "target": {
+                  "role": "button",
+                  "name": "Continue to review",
+                  "landmarks": [
+                    "Service application",
+                    "Applicant details"
+                  ]
+                },
+                "postcondition": {
+                  "page": [
+                    "http",
+                    "127.0.0.1",
+                    49444,
+                    "/forms/equipment"
+                  ],
+                  "kind": "state",
+                  "notices": [
+                    "Review stage. Confirm email and authorization code."
+                  ],
+                  "appeared": [
+                    {
+                      "role": "textbox",
+                      "name": "Confirm applicant email",
+                      "landmarks": [
+                        "Service application",
+                        "Application review"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Authorization code",
+                      "landmarks": [
+                        "Service application",
+                        "Application review"
+                      ]
+                    },
+                    {
+                      "role": "checkbox",
+                      "name": "Copy applicant address to billing",
+                      "landmarks": [
+                        "Service application",
+                        "Application review"
+                      ]
+                    },
+                    {
+                      "role": "checkbox",
+                      "name": "Add paid extras",
+                      "landmarks": [
+                        "Service application",
+                        "Application review"
+                      ]
+                    },
+                    {
+                      "role": "button",
+                      "name": "Submit application",
+                      "landmarks": [
+                        "Service application",
+                        "Application review",
+                        "Primary application"
+                      ]
+                    }
+                  ],
+                  "disappeared": [
+                    {
+                      "role": "textbox",
+                      "name": "Application reference",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Given name",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Family name",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Applicant email",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Contact telephone",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Organization",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Cost center",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Street address",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "City",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Postal code",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Given name",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Family name",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Applicant email",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Contact telephone",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Street address",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "City",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "textbox",
+                      "name": "Postal code",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details",
+                        "Billing contact"
+                      ]
+                    },
+                    {
+                      "role": "combobox",
+                      "name": "Region",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "combobox",
+                      "name": "Service district",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "combobox",
+                      "name": "Requested service",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "combobox",
+                      "name": "Delivery or session slot",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "combobox",
+                      "name": "Reserved resource",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    },
+                    {
+                      "role": "button",
+                      "name": "Continue to review",
+                      "landmarks": [
+                        "Service application",
+                        "Applicant details"
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          }
+        }
+      ],
+      "last_page_before": {
+        "tool": "browser_open",
+        "receipt_line": 5,
+        "page": {
+          "url": "http://127.0.0.1:49444/?case=score-equipment-renamed-10000-skill",
+          "notices": [],
+          "text": "Service portal\n\nRequests",
+          "controls": [
+            {
+              "ref": "1:0",
+              "role": "link",
+              "name": "Requests",
+              "section": ""
+            }
+          ],
+          "skill": "Proven skill 'Complete the Equipment loan service application' starts on this page. Call musclememory_run_skill with skill='40de08d0-b8b7-4e73-9d51-3ad0382f1252' and its inputs."
+        }
+      },
+      "next_tool": "browser_read",
+      "first_page_observation_after": {
+        "tool": "browser_read",
+        "receipt_line": 11,
+        "page": {
+          "url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+          "notices": [
+            "Service changed; choose a slot."
+          ],
+          "text": "Equipment loan portal\n\nChoose region before district; changing region clears the district. Choose the service to reveal its slot. Continue to review, then confirm the applicant email and authorization code. Paid extras are optional and are not part of a standard application. The review page defaults to copying the applicant address to billing: turn that off for a separate billing contact. Only the Service application form creates the requested record.\n\nCurrent resource table\n\nAll prices in cents. Ready time in days.\n\ncode\tservice\tregion\tactive\tcapacity\tready_days\tbase\tdispatch\tunit\nResource 22\tOther service\tNorth\tNo\t6\t1\t265\t233\t236\nResource 24\tLaptop delivery\tSouth\tNo\t5\t5\t351\t146\t42\nResource 20\tLaptop delivery\tNorth\tNo\t8\t7\t150\t134\t200\nResource 06\tOther service\tSouth\tNo\t10\t4\t543\t115\t203\nResource 09\tOther service\tNorth\tYes\t11\t9\t794\t107\t208\nResource 04\tOther service\tSouth\tNo\t7\t6\t630\t322\t195\nResource 08\tLaptop delivery\tNorth\tNo\t2\t5\t203\t150\t174\nResource 16\tLaptop delivery\tSouth\tNo\t7\t9\t824\t105\t138\nResource 15\tOther service\tNorth\tNo\t2\t7\t201\t81\t204\nResource 01\tLaptop delivery\tNorth\tYes\t12\t2\t302\t98\t211\nResource 23\tOther service\tNorth\tNo\t2\t7\t866\t216\t35\nResource 14\tOther service\tNorth\tYes\t8\t5\t265\t219\t188\nResource 18\tOther service\tSouth\tYes\t12\t8\t876\t393\t171\nResource 12\tOther service\tSouth\tYes\t11\t8\t142\t391\t59\nResource 10\tOther service\tNorth\tNo\t3\t7\t695\t359\t237\nResource 11\tLaptop delivery\tSouth\tYes\t12\t9\t727\t107\t227\nResource 17\tOther service\tSouth\tYes\t8\t4\t904\t276\t44\nResource 07\tLaptop delivery\tNorth\tYes\t12\t2\t323\t409\t58\nResource 21\tOther service\tSouth\tYes\t7\t6\t493\t378\t84\nResource 03\tLaptop delivery\tNorth\tNo\t3\t5\t830\t189\t191\nResource 05\tOther service\tNorth\tNo\t9\t3\t303\t295\t163\nResource 13\tLaptop delivery\tNorth\tYes\t12\t2\t790\t184\t136\nResource 19\tLaptop delivery\tNorth\tYes\t12\t2\t769\t377\t122\nResource 02\tLaptop delivery\tSouth\tYes\t4\t4\t882\t259\t111\nService application IDGiven nameFamily nameApplicant emailContact telephoneOrganizationBilling cost centerStreet addressCityPostal code\nGiven nameFamily nameApplicant emailContact telephoneStreet addressCityPostal code\nRegion\nChoose…\nSouth\nNorth\nWest\nService district\nChoose…\nNorth / Central\nNorth / Outer\nRequested service\nChoose…\nGeneral inquiry\nLaptop delivery\nPremium package\nDelivery or session slot\nChoose…\n09:00–11:00\n14:00–16:00\nReserved resource\nChoose…\nResource 22\nResource 24\nResource 20\nResource 06\nResource 09\nResource 04\nResource 08\nResource 16\nResource 15\nResource 01\nResource 23\nResource 14\nResource 18\nResource 12\nResource 10\nResource 11\nResource 17\nResource 07\nResource 21\nResource 03\nResource 05\nResource 13\nResource 19\nResource 02\nContinue to review\n\nService changed; choose a slot.\n\nArchived applications\n\nHistorical records only. This form does not create a service application.\n\nApplication referenceApplicant emailSubmit application",
+          "controls": [
+            {
+              "ref": "74:0",
+              "role": "textbox",
+              "name": "Service application ID",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:1",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Ari10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:2",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Patel10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:3",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "ari.equipment.10000@example.test",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:4",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-202-555-0000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:5",
+              "role": "textbox",
+              "name": "Organization",
+              "value": "Studio 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:6",
+              "role": "textbox",
+              "name": "Billing cost center",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:7",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "110 Cedar Avenue",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:8",
+              "role": "textbox",
+              "name": "City",
+              "value": "Cedar City 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:9",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "20000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:10",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Sam10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:11",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Chen10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:12",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "billing.equipment.10000@example.test",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:13",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-303-555-0000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:14",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "420 Oak Street",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:15",
+              "role": "textbox",
+              "name": "City",
+              "value": "Oak City 10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:16",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "30000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:17",
+              "role": "combobox",
+              "name": "Region",
+              "value": "North",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "South",
+                "North",
+                "West"
+              ]
+            },
+            {
+              "ref": "74:18",
+              "role": "combobox",
+              "name": "Service district",
+              "value": "North / Central",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "North / Central",
+                "North / Outer"
+              ]
+            },
+            {
+              "ref": "74:19",
+              "role": "combobox",
+              "name": "Requested service",
+              "value": "Laptop delivery",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "General inquiry",
+                "Laptop delivery",
+                "Premium package"
+              ]
+            },
+            {
+              "ref": "74:20",
+              "role": "combobox",
+              "name": "Delivery or session slot",
+              "value": "14:00–16:00",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "09:00–11:00",
+                "14:00–16:00"
+              ]
+            },
+            {
+              "ref": "74:21",
+              "role": "combobox",
+              "name": "Reserved resource",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "Resource 22",
+                "Resource 24",
+                "Resource 20",
+                "Resource 06",
+                "Resource 09",
+                "Resource 04",
+                "Resource 08",
+                "Resource 16",
+                "Resource 15",
+                "Resource 01",
+                "Resource 23",
+                "Resource 14",
+                "Resource 18",
+                "Resource 12",
+                "Resource 10",
+                "Resource 11",
+                "Resource 17",
+                "Resource 07",
+                "Resource 21",
+                "Resource 03",
+                "Resource 05",
+                "Resource 13",
+                "Resource 19",
+                "Resource 02"
+              ]
+            },
+            {
+              "ref": "74:22",
+              "role": "button",
+              "name": "Continue to review",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:28",
+              "role": "textbox",
+              "name": "Application reference",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "74:29",
+              "role": "textbox",
+              "name": "Applicant email",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "74:30",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Archived applications"
+            }
+          ]
+        }
+      },
+      "first_browser_read_after": {
+        "tool": "browser_read",
+        "receipt_line": 11,
+        "page": {
+          "url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+          "notices": [
+            "Service changed; choose a slot."
+          ],
+          "text": "Equipment loan portal\n\nChoose region before district; changing region clears the district. Choose the service to reveal its slot. Continue to review, then confirm the applicant email and authorization code. Paid extras are optional and are not part of a standard application. The review page defaults to copying the applicant address to billing: turn that off for a separate billing contact. Only the Service application form creates the requested record.\n\nCurrent resource table\n\nAll prices in cents. Ready time in days.\n\ncode\tservice\tregion\tactive\tcapacity\tready_days\tbase\tdispatch\tunit\nResource 22\tOther service\tNorth\tNo\t6\t1\t265\t233\t236\nResource 24\tLaptop delivery\tSouth\tNo\t5\t5\t351\t146\t42\nResource 20\tLaptop delivery\tNorth\tNo\t8\t7\t150\t134\t200\nResource 06\tOther service\tSouth\tNo\t10\t4\t543\t115\t203\nResource 09\tOther service\tNorth\tYes\t11\t9\t794\t107\t208\nResource 04\tOther service\tSouth\tNo\t7\t6\t630\t322\t195\nResource 08\tLaptop delivery\tNorth\tNo\t2\t5\t203\t150\t174\nResource 16\tLaptop delivery\tSouth\tNo\t7\t9\t824\t105\t138\nResource 15\tOther service\tNorth\tNo\t2\t7\t201\t81\t204\nResource 01\tLaptop delivery\tNorth\tYes\t12\t2\t302\t98\t211\nResource 23\tOther service\tNorth\tNo\t2\t7\t866\t216\t35\nResource 14\tOther service\tNorth\tYes\t8\t5\t265\t219\t188\nResource 18\tOther service\tSouth\tYes\t12\t8\t876\t393\t171\nResource 12\tOther service\tSouth\tYes\t11\t8\t142\t391\t59\nResource 10\tOther service\tNorth\tNo\t3\t7\t695\t359\t237\nResource 11\tLaptop delivery\tSouth\tYes\t12\t9\t727\t107\t227\nResource 17\tOther service\tSouth\tYes\t8\t4\t904\t276\t44\nResource 07\tLaptop delivery\tNorth\tYes\t12\t2\t323\t409\t58\nResource 21\tOther service\tSouth\tYes\t7\t6\t493\t378\t84\nResource 03\tLaptop delivery\tNorth\tNo\t3\t5\t830\t189\t191\nResource 05\tOther service\tNorth\tNo\t9\t3\t303\t295\t163\nResource 13\tLaptop delivery\tNorth\tYes\t12\t2\t790\t184\t136\nResource 19\tLaptop delivery\tNorth\tYes\t12\t2\t769\t377\t122\nResource 02\tLaptop delivery\tSouth\tYes\t4\t4\t882\t259\t111\nService application IDGiven nameFamily nameApplicant emailContact telephoneOrganizationBilling cost centerStreet addressCityPostal code\nGiven nameFamily nameApplicant emailContact telephoneStreet addressCityPostal code\nRegion\nChoose…\nSouth\nNorth\nWest\nService district\nChoose…\nNorth / Central\nNorth / Outer\nRequested service\nChoose…\nGeneral inquiry\nLaptop delivery\nPremium package\nDelivery or session slot\nChoose…\n09:00–11:00\n14:00–16:00\nReserved resource\nChoose…\nResource 22\nResource 24\nResource 20\nResource 06\nResource 09\nResource 04\nResource 08\nResource 16\nResource 15\nResource 01\nResource 23\nResource 14\nResource 18\nResource 12\nResource 10\nResource 11\nResource 17\nResource 07\nResource 21\nResource 03\nResource 05\nResource 13\nResource 19\nResource 02\nContinue to review\n\nService changed; choose a slot.\n\nArchived applications\n\nHistorical records only. This form does not create a service application.\n\nApplication referenceApplicant emailSubmit application",
+          "controls": [
+            {
+              "ref": "74:0",
+              "role": "textbox",
+              "name": "Service application ID",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:1",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Ari10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:2",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Patel10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:3",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "ari.equipment.10000@example.test",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:4",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-202-555-0000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:5",
+              "role": "textbox",
+              "name": "Organization",
+              "value": "Studio 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:6",
+              "role": "textbox",
+              "name": "Billing cost center",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:7",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "110 Cedar Avenue",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:8",
+              "role": "textbox",
+              "name": "City",
+              "value": "Cedar City 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:9",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "20000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:10",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Sam10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:11",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Chen10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:12",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "billing.equipment.10000@example.test",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:13",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-303-555-0000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:14",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "420 Oak Street",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:15",
+              "role": "textbox",
+              "name": "City",
+              "value": "Oak City 10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:16",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "30000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "74:17",
+              "role": "combobox",
+              "name": "Region",
+              "value": "North",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "South",
+                "North",
+                "West"
+              ]
+            },
+            {
+              "ref": "74:18",
+              "role": "combobox",
+              "name": "Service district",
+              "value": "North / Central",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "North / Central",
+                "North / Outer"
+              ]
+            },
+            {
+              "ref": "74:19",
+              "role": "combobox",
+              "name": "Requested service",
+              "value": "Laptop delivery",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "General inquiry",
+                "Laptop delivery",
+                "Premium package"
+              ]
+            },
+            {
+              "ref": "74:20",
+              "role": "combobox",
+              "name": "Delivery or session slot",
+              "value": "14:00–16:00",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "09:00–11:00",
+                "14:00–16:00"
+              ]
+            },
+            {
+              "ref": "74:21",
+              "role": "combobox",
+              "name": "Reserved resource",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "Resource 22",
+                "Resource 24",
+                "Resource 20",
+                "Resource 06",
+                "Resource 09",
+                "Resource 04",
+                "Resource 08",
+                "Resource 16",
+                "Resource 15",
+                "Resource 01",
+                "Resource 23",
+                "Resource 14",
+                "Resource 18",
+                "Resource 12",
+                "Resource 10",
+                "Resource 11",
+                "Resource 17",
+                "Resource 07",
+                "Resource 21",
+                "Resource 03",
+                "Resource 05",
+                "Resource 13",
+                "Resource 19",
+                "Resource 02"
+              ]
+            },
+            {
+              "ref": "74:22",
+              "role": "button",
+              "name": "Continue to review",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "74:28",
+              "role": "textbox",
+              "name": "Application reference",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "74:29",
+              "role": "textbox",
+              "name": "Applicant email",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "74:30",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Archived applications"
+            }
+          ]
+        },
+        "intervening_tools": []
+      }
+    },
+    {
+      "call": 2,
+      "receipt_line": 20,
+      "arguments": {
+        "skill": "40de08d0-b8b7-4e73-9d51-3ad0382f1252",
+        "inputs": {
+          "applicant_details_application_reference": "APP-EQUIPMENT-10000",
+          "applicant_details_given_name": "Ari10000",
+          "applicant_details_family_name": "Patel10000",
+          "applicant_details_applicant_email": "ari.equipment.10000@example.test",
+          "applicant_details_contact_telephone": "+1-202-555-0000",
+          "applicant_details_organization": "Studio 10000",
+          "applicant_details_cost_center": "CC-10000",
+          "applicant_details_street_address": "110 Cedar Avenue",
+          "applicant_details_city": "Cedar City 10000",
+          "applicant_details_postal_code": "20000",
+          "billing_contact_given_name": "Sam10000",
+          "billing_contact_family_name": "Chen10000",
+          "billing_contact_applicant_email": "billing.equipment.10000@example.test",
+          "billing_contact_contact_telephone": "+1-303-555-0000",
+          "billing_contact_street_address": "420 Oak Street",
+          "billing_contact_city": "Oak City 10000",
+          "billing_contact_postal_code": "30000",
+          "applicant_details_region": "North",
+          "applicant_details_service_district": "North / Central",
+          "applicant_details_requested_service": "Laptop delivery",
+          "applicant_details_delivery_or_session_slot": "14:00–16:00",
+          "applicant_details_reserved_resource": "Resource 07"
+        }
+      },
+      "reply": {
+        "notice": "MuscleMemory carried out the proven steps below with checks and clicked no final submit. Check the page, do anything left for you, then submit yourself.",
+        "done": [
+          "Application reference",
+          "Given name",
+          "Family name",
+          "Applicant email",
+          "Contact telephone",
+          "Organization",
+          "Cost center",
+          "Street address",
+          "City",
+          "Postal code",
+          "Given name",
+          "Family name",
+          "Applicant email",
+          "Contact telephone",
+          "Street address",
+          "City",
+          "Postal code",
+          "Region",
+          "Service district",
+          "Requested service",
+          "Delivery or session slot",
+          "Reserved resource",
+          "Continue to review",
+          "Confirm applicant email"
+        ],
+        "left_for_you": [
+          {
+            "field": "Authorization code",
+            "why": "needs your input"
+          }
+        ],
+        "stopped": "fill_these_then_run_again",
+        "at": "Copy applicant address to billing",
+        "page_notices": [
+          "Review stage. Confirm email and authorization code."
+        ],
+        "next": "Fill the fields left for you, then call this skill again with the same inputs. It carries on from there (later steps and pages too) and stops before the submit."
+      },
+      "stopped_step_matches": [
+        {
+          "browser_step_1based": 29,
+          "step": {
+            "step_token": "e30",
+            "capability": "browser.act",
+            "source_tool": "browser_act",
+            "arguments": {
+              "action": "click",
+              "target": {
+                "role": "checkbox",
+                "name": "Copy applicant address to billing",
+                "landmarks": [
+                  "Service application",
+                  "Application review"
+                ]
+              },
+              "value": null,
+              "mm_browser": {
+                "version": 1,
+                "action": "click",
+                "page": [
+                  "http",
+                  "127.0.0.1",
+                  49444,
+                  "/forms/equipment"
+                ],
+                "target": {
+                  "role": "checkbox",
+                  "name": "Copy applicant address to billing",
+                  "landmarks": [
+                    "Service application",
+                    "Application review"
+                  ]
+                },
+                "postcondition": {
+                  "page": [
+                    "http",
+                    "127.0.0.1",
+                    49444,
+                    "/forms/equipment"
+                  ],
+                  "kind": "state",
+                  "notices": [],
+                  "appeared": [],
+                  "disappeared": [],
+                  "changed_values": [
+                    {
+                      "target": {
+                        "role": "checkbox",
+                        "name": "Copy applicant address to billing",
+                        "landmarks": [
+                          "Service application",
+                          "Application review"
+                        ]
+                      },
+                      "value": "false"
+                    }
+                  ]
+                }
+              }
+            },
+            "dependencies": [],
+            "condition": null,
+            "permission": null,
+            "effect": "write",
+            "requires_approval": true,
+            "critical": false
+          }
+        }
+      ],
+      "last_page_before": {
+        "tool": "browser_act",
+        "receipt_line": 18,
+        "page": {
+          "url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+          "notices": [
+            "Service changed; choose a slot."
+          ],
+          "text": "Equipment loan portal\n\nChoose region before district; changing region clears the district. Choose the service to reveal its slot. Continue to review, then confirm the applicant email and authorization code. Paid extras are optional and are not part of a standard application. The review page defaults to copying the applicant address to billing: turn that off for a separate billing contact. Only the Service application form creates the requested record.\n\nCurrent resource table\n\nAll prices in cents. Ready time in days.\n\ncode\tservice\tregion\tactive\tcapacity\tready_days\tbase\tdispatch\tunit\nResource 22\tOther service\tNorth\tNo\t6\t1\t265\t233\t236\nResource 24\tLaptop delivery\tSouth\tNo\t5\t5\t351\t146\t42\nResource 20\tLaptop delivery\tNorth\tNo\t8\t7\t150\t134\t200\nResource 06\tOther service\tSouth\tNo\t10\t4\t543\t115\t203\nResource 09\tOther service\tNorth\tYes\t11\t9\t794\t107\t208\nResource 04\tOther service\tSouth\tNo\t7\t6\t630\t322\t195\nResource 08\tLaptop delivery\tNorth\tNo\t2\t5\t203\t150\t174\nResource 16\tLaptop delivery\tSouth\tNo\t7\t9\t824\t105\t138\nResource 15\tOther service\tNorth\tNo\t2\t7\t201\t81\t204\nResource 01\tLaptop delivery\tNorth\tYes\t12\t2\t302\t98\t211\nResource 23\tOther service\tNorth\tNo\t2\t7\t866\t216\t35\nResource 14\tOther service\tNorth\tYes\t8\t5\t265\t219\t188\nResource 18\tOther service\tSouth\tYes\t12\t8\t876\t393\t171\nResource 12\tOther service\tSouth\tYes\t11\t8\t142\t391\t59\nResource 10\tOther service\tNorth\tNo\t3\t7\t695\t359\t237\nResource 11\tLaptop delivery\tSouth\tYes\t12\t9\t727\t107\t227\nResource 17\tOther service\tSouth\tYes\t8\t4\t904\t276\t44\nResource 07\tLaptop delivery\tNorth\tYes\t12\t2\t323\t409\t58\nResource 21\tOther service\tSouth\tYes\t7\t6\t493\t378\t84\nResource 03\tLaptop delivery\tNorth\tNo\t3\t5\t830\t189\t191\nResource 05\tOther service\tNorth\tNo\t9\t3\t303\t295\t163\nResource 13\tLaptop delivery\tNorth\tYes\t12\t2\t790\t184\t136\nResource 19\tLaptop delivery\tNorth\tYes\t12\t2\t769\t377\t122\nResource 02\tLaptop delivery\tSouth\tYes\t4\t4\t882\t259\t111\nService application IDGiven nameFamily nameApplicant emailContact telephoneOrganizationBilling cost centerStreet addressCityPostal code\nGiven nameFamily nameApplicant emailContact telephoneStreet addressCityPostal code\nRegion\nChoose…\nSouth\nNorth\nWest\nService district\nChoose…\nNorth / Central\nNorth / Outer\nRequested service\nChoose…\nGeneral inquiry\nLaptop delivery\nPremium package\nDelivery or session slot\nChoose…\n09:00–11:00\n14:00–16:00\nReserved resource\nChoose…\nResource 22\nResource 24\nResource 20\nResource 06\nResource 09\nResource 04\nResource 08\nResource 16\nResource 15\nResource 01\nResource 23\nResource 14\nResource 18\nResource 12\nResource 10\nResource 11\nResource 17\nResource 07\nResource 21\nResource 03\nResource 05\nResource 13\nResource 19\nResource 02\nContinue to review\n\nService changed; choose a slot.\n\nArchived applications\n\nHistorical records only. This form does not create a service application.\n\nApplication referenceApplicant emailSubmit application",
+          "controls": [
+            {
+              "ref": "77:0",
+              "role": "textbox",
+              "name": "Service application ID",
+              "value": "APP-EQUIPMENT-10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:1",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Ari10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:2",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Patel10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:3",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "ari.equipment.10000@example.test",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:4",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-202-555-0000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:5",
+              "role": "textbox",
+              "name": "Organization",
+              "value": "Studio 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:6",
+              "role": "textbox",
+              "name": "Billing cost center",
+              "value": "CC-10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:7",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "110 Cedar Avenue",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:8",
+              "role": "textbox",
+              "name": "City",
+              "value": "Cedar City 10000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:9",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "20000",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:10",
+              "role": "textbox",
+              "name": "Given name",
+              "value": "Sam10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:11",
+              "role": "textbox",
+              "name": "Family name",
+              "value": "Chen10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:12",
+              "role": "textbox",
+              "name": "Applicant email",
+              "value": "billing.equipment.10000@example.test",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:13",
+              "role": "textbox",
+              "name": "Contact telephone",
+              "value": "+1-303-555-0000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:14",
+              "role": "textbox",
+              "name": "Street address",
+              "value": "420 Oak Street",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:15",
+              "role": "textbox",
+              "name": "City",
+              "value": "Oak City 10000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:16",
+              "role": "textbox",
+              "name": "Postal code",
+              "value": "30000",
+              "section": "Service application > Applicant details > Billing contact"
+            },
+            {
+              "ref": "77:17",
+              "role": "combobox",
+              "name": "Region",
+              "value": "North",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "South",
+                "North",
+                "West"
+              ]
+            },
+            {
+              "ref": "77:18",
+              "role": "combobox",
+              "name": "Service district",
+              "value": "North / Central",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "North / Central",
+                "North / Outer"
+              ]
+            },
+            {
+              "ref": "77:19",
+              "role": "combobox",
+              "name": "Requested service",
+              "value": "Laptop delivery",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "General inquiry",
+                "Laptop delivery",
+                "Premium package"
+              ]
+            },
+            {
+              "ref": "77:20",
+              "role": "combobox",
+              "name": "Delivery or session slot",
+              "value": "14:00–16:00",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "09:00–11:00",
+                "14:00–16:00"
+              ]
+            },
+            {
+              "ref": "77:21",
+              "role": "combobox",
+              "name": "Reserved resource",
+              "value": "Resource 07",
+              "section": "Service application > Applicant details",
+              "options": [
+                "Choose…",
+                "Resource 22",
+                "Resource 24",
+                "Resource 20",
+                "Resource 06",
+                "Resource 09",
+                "Resource 04",
+                "Resource 08",
+                "Resource 16",
+                "Resource 15",
+                "Resource 01",
+                "Resource 23",
+                "Resource 14",
+                "Resource 18",
+                "Resource 12",
+                "Resource 10",
+                "Resource 11",
+                "Resource 17",
+                "Resource 07",
+                "Resource 21",
+                "Resource 03",
+                "Resource 05",
+                "Resource 13",
+                "Resource 19",
+                "Resource 02"
+              ]
+            },
+            {
+              "ref": "77:22",
+              "role": "button",
+              "name": "Continue to review",
+              "section": "Service application > Applicant details"
+            },
+            {
+              "ref": "77:28",
+              "role": "textbox",
+              "name": "Application reference",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "77:29",
+              "role": "textbox",
+              "name": "Applicant email",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "77:30",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Archived applications"
+            }
+          ]
+        }
+      },
+      "next_tool": "browser_read",
+      "first_page_observation_after": {
+        "tool": "browser_read",
+        "receipt_line": 22,
+        "page": {
+          "url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+          "notices": [
+            "Review stage. Confirm email and authorization code."
+          ],
+          "text": "Equipment loan portal\n\nChoose region before district; changing region clears the district. Choose the service to reveal its slot. Continue to review, then confirm the applicant email and authorization code. Paid extras are optional and are not part of a standard application. The review page defaults to copying the applicant address to billing: turn that off for a separate billing contact. Only the Service application form creates the requested record.\n\nCurrent resource table\n\nAll prices in cents. Ready time in days.\n\ncode\tservice\tregion\tactive\tcapacity\tready_days\tbase\tdispatch\tunit\nResource 22\tOther service\tNorth\tNo\t6\t1\t265\t233\t236\nResource 24\tLaptop delivery\tSouth\tNo\t5\t5\t351\t146\t42\nResource 20\tLaptop delivery\tNorth\tNo\t8\t7\t150\t134\t200\nResource 06\tOther service\tSouth\tNo\t10\t4\t543\t115\t203\nResource 09\tOther service\tNorth\tYes\t11\t9\t794\t107\t208\nResource 04\tOther service\tSouth\tNo\t7\t6\t630\t322\t195\nResource 08\tLaptop delivery\tNorth\tNo\t2\t5\t203\t150\t174\nResource 16\tLaptop delivery\tSouth\tNo\t7\t9\t824\t105\t138\nResource 15\tOther service\tNorth\tNo\t2\t7\t201\t81\t204\nResource 01\tLaptop delivery\tNorth\tYes\t12\t2\t302\t98\t211\nResource 23\tOther service\tNorth\tNo\t2\t7\t866\t216\t35\nResource 14\tOther service\tNorth\tYes\t8\t5\t265\t219\t188\nResource 18\tOther service\tSouth\tYes\t12\t8\t876\t393\t171\nResource 12\tOther service\tSouth\tYes\t11\t8\t142\t391\t59\nResource 10\tOther service\tNorth\tNo\t3\t7\t695\t359\t237\nResource 11\tLaptop delivery\tSouth\tYes\t12\t9\t727\t107\t227\nResource 17\tOther service\tSouth\tYes\t8\t4\t904\t276\t44\nResource 07\tLaptop delivery\tNorth\tYes\t12\t2\t323\t409\t58\nResource 21\tOther service\tSouth\tYes\t7\t6\t493\t378\t84\nResource 03\tLaptop delivery\tNorth\tNo\t3\t5\t830\t189\t191\nResource 05\tOther service\tNorth\tNo\t9\t3\t303\t295\t163\nResource 13\tLaptop delivery\tNorth\tYes\t12\t2\t790\t184\t136\nResource 19\tLaptop delivery\tNorth\tYes\t12\t2\t769\t377\t122\nResource 02\tLaptop delivery\tSouth\tYes\t4\t4\t882\t259\t111\nConfirm applicant emailAuthorization codeCopy applicant address to billingAdd paid extras\nSubmit application\n\nReview stage. Confirm email and authorization code.\n\nArchived applications\n\nHistorical records only. This form does not create a service application.\n\nApplication referenceApplicant emailSubmit application",
+          "controls": [
+            {
+              "ref": "110:23",
+              "role": "textbox",
+              "name": "Confirm applicant email",
+              "value": "ari.equipment.10000@example.test",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:24",
+              "role": "textbox",
+              "name": "Authorization code",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:25",
+              "role": "checkbox",
+              "name": "Copy applicant address to billing",
+              "value": "true",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:26",
+              "role": "checkbox",
+              "name": "Add paid extras",
+              "value": "false",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:27",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Service application > Application review > Primary application"
+            },
+            {
+              "ref": "110:28",
+              "role": "textbox",
+              "name": "Application reference",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "110:29",
+              "role": "textbox",
+              "name": "Applicant email",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "110:30",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Archived applications"
+            }
+          ]
+        }
+      },
+      "first_browser_read_after": {
+        "tool": "browser_read",
+        "receipt_line": 22,
+        "page": {
+          "url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+          "notices": [
+            "Review stage. Confirm email and authorization code."
+          ],
+          "text": "Equipment loan portal\n\nChoose region before district; changing region clears the district. Choose the service to reveal its slot. Continue to review, then confirm the applicant email and authorization code. Paid extras are optional and are not part of a standard application. The review page defaults to copying the applicant address to billing: turn that off for a separate billing contact. Only the Service application form creates the requested record.\n\nCurrent resource table\n\nAll prices in cents. Ready time in days.\n\ncode\tservice\tregion\tactive\tcapacity\tready_days\tbase\tdispatch\tunit\nResource 22\tOther service\tNorth\tNo\t6\t1\t265\t233\t236\nResource 24\tLaptop delivery\tSouth\tNo\t5\t5\t351\t146\t42\nResource 20\tLaptop delivery\tNorth\tNo\t8\t7\t150\t134\t200\nResource 06\tOther service\tSouth\tNo\t10\t4\t543\t115\t203\nResource 09\tOther service\tNorth\tYes\t11\t9\t794\t107\t208\nResource 04\tOther service\tSouth\tNo\t7\t6\t630\t322\t195\nResource 08\tLaptop delivery\tNorth\tNo\t2\t5\t203\t150\t174\nResource 16\tLaptop delivery\tSouth\tNo\t7\t9\t824\t105\t138\nResource 15\tOther service\tNorth\tNo\t2\t7\t201\t81\t204\nResource 01\tLaptop delivery\tNorth\tYes\t12\t2\t302\t98\t211\nResource 23\tOther service\tNorth\tNo\t2\t7\t866\t216\t35\nResource 14\tOther service\tNorth\tYes\t8\t5\t265\t219\t188\nResource 18\tOther service\tSouth\tYes\t12\t8\t876\t393\t171\nResource 12\tOther service\tSouth\tYes\t11\t8\t142\t391\t59\nResource 10\tOther service\tNorth\tNo\t3\t7\t695\t359\t237\nResource 11\tLaptop delivery\tSouth\tYes\t12\t9\t727\t107\t227\nResource 17\tOther service\tSouth\tYes\t8\t4\t904\t276\t44\nResource 07\tLaptop delivery\tNorth\tYes\t12\t2\t323\t409\t58\nResource 21\tOther service\tSouth\tYes\t7\t6\t493\t378\t84\nResource 03\tLaptop delivery\tNorth\tNo\t3\t5\t830\t189\t191\nResource 05\tOther service\tNorth\tNo\t9\t3\t303\t295\t163\nResource 13\tLaptop delivery\tNorth\tYes\t12\t2\t790\t184\t136\nResource 19\tLaptop delivery\tNorth\tYes\t12\t2\t769\t377\t122\nResource 02\tLaptop delivery\tSouth\tYes\t4\t4\t882\t259\t111\nConfirm applicant emailAuthorization codeCopy applicant address to billingAdd paid extras\nSubmit application\n\nReview stage. Confirm email and authorization code.\n\nArchived applications\n\nHistorical records only. This form does not create a service application.\n\nApplication referenceApplicant emailSubmit application",
+          "controls": [
+            {
+              "ref": "110:23",
+              "role": "textbox",
+              "name": "Confirm applicant email",
+              "value": "ari.equipment.10000@example.test",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:24",
+              "role": "textbox",
+              "name": "Authorization code",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:25",
+              "role": "checkbox",
+              "name": "Copy applicant address to billing",
+              "value": "true",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:26",
+              "role": "checkbox",
+              "name": "Add paid extras",
+              "value": "false",
+              "section": "Service application > Application review"
+            },
+            {
+              "ref": "110:27",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Service application > Application review > Primary application"
+            },
+            {
+              "ref": "110:28",
+              "role": "textbox",
+              "name": "Application reference",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "110:29",
+              "role": "textbox",
+              "name": "Applicant email",
+              "section": "Archived applications"
+            },
+            {
+              "ref": "110:30",
+              "role": "button",
+              "name": "Submit application",
+              "section": "Archived applications"
+            }
+          ]
+        },
+        "intervening_tools": []
+      }
+    }
+  ],
+  "validation": {
+    "checked_at": "2026-10-17T05:53:30.288229+05:30",
+    "full_test_suite": {
+      "command": "MM_TEST_CODEX=0 .venv/bin/python -m pytest -q",
+      "exit_code": 0,
+      "passed": 264,
+      "skipped": 7
+    },
+    "ruff_check": {
+      "command": ".venv/bin/ruff check packages tests scripts examples benchmarks",
+      "exit_code": 0
+    },
+    "ruff_format_check": {
+      "command": ".venv/bin/ruff format --check packages tests scripts examples benchmarks",
+      "exit_code": 0,
+      "files_formatted": 100
+    },
+    "model": "gpt-6-luna",
+    "cli_version": "codex-cli 0.160.0",
+    "reasoning": "high",
+    "fresh_campaign": true,
+    "scored_runs_planned": 2,
+    "full_campaign": false,
+    "initial_source_fingerprint_sha256": "08f3db87636e8ba4f726273dcb3107087a13c9cc2ed675aa6f5f8868308e698b",
+    "product_and_test_sources_unchanged": true,
+    "all_tool_logs_reconcile": true,
+    "completed_scored_runs": 2
+  },
+  "limits": [
+    "Synthetic local site",
+    "One form, one renamed variant, one seed per arm"
+  ],
+  "page_read_findings": [
+    {
+      "call": 1,
+      "page_url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+      "page_read_was_next_tool": true,
+      "visible_form_fields": 22,
+      "nonempty_form_fields": 19,
+      "stopped_browser_steps": [
+        26
+      ]
+    },
+    {
+      "call": 2,
+      "page_url": "http://127.0.0.1:49444/forms/equipment?case=score-equipment-renamed-10000-skill",
+      "page_read_was_next_tool": true,
+      "visible_form_fields": 2,
+      "nonempty_form_fields": 1,
+      "stopped_browser_steps": [
+        29
+      ]
+    }
+  ],
+  "skill_behavior": {
+    "navigated_from_home_to_form": true,
+    "first_call_populated_form_fields": 19,
+    "first_call_visible_form_fields": 22,
+    "first_call_resource_input": "",
+    "second_call_resource_input": "Resource 07",
+    "run_skill_calls": 2,
+    "ready_returned": false,
+    "manual_completion_after_second_call": true,
+    "resource_selected_manually_before_second_call": true
+  }
+}

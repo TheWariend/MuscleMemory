@@ -1,0 +1,28 @@
+{
+  "checked_at": "2026-10-17T05:53:30.288229+05:30",
+  "full_test_suite": {
+    "command": "MM_TEST_CODEX=0 .venv/bin/python -m pytest -q",
+    "exit_code": 0,
+    "passed": 264,
+    "skipped": 7
+  },
+  "ruff_check": {
+    "command": ".venv/bin/ruff check packages tests scripts examples benchmarks",
+    "exit_code": 0
+  },
+  "ruff_format_check": {
+    "command": ".venv/bin/ruff format --check packages tests scripts examples benchmarks",
+    "exit_code": 0,
+    "files_formatted": 100
+  },
+  "model": "gpt-6-luna",
+  "cli_version": "codex-cli 0.160.0",
+  "reasoning": "high",
+  "fresh_campaign": true,
+  "scored_runs_planned": 2,
+  "full_campaign": false,
+  "initial_source_fingerprint_sha256": "08f3db87636e8ba4f726273dcb3107087a13c9cc2ed675aa6f5f8868308e698b",
+  "product_and_test_sources_unchanged": true,
+  "all_tool_logs_reconcile": true,
+  "completed_scored_runs": 2
+}
