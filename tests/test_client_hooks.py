@@ -357,9 +357,9 @@ def test_overlapping_reads_do_not_block_learning(tmp_path):
             )
         gaps = json.loads(queue.listing()[0]["gaps"])
         assert "parallel_tool_dependencies_unknown" not in gaps
-        # A test run alongside a read still leaves the order unknown.
+        # Two commands at once still leave the order unknown.
         for source, name, arguments in [
-            ("read-2", "Read", {"file_path": "a.py"}),
+            ("script", "Bash", {"command": "python3 build.py"}),
             ("tests", "Bash", {"command": "pytest -q"}),
         ]:
             queue.handle(
@@ -1119,3 +1119,142 @@ def test_documentation_edits_after_passing_tests_keep_the_session_verified(
         )
     hook("Stop")
     assert len(service.listing(principal, "team", "procedures")["items"]) == 1
+
+
+def test_a_command_beside_edits_is_kept_but_proves_nothing(tmp_path):
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+    try:
+        token, _ = queue.handle(
+            "claude", payload("UserPromptSubmit", prompt="Task"), tools, runtime, "team"
+        )
+        calls = [
+            ("edit", "Edit", {"file_path": "a.py", "old_string": "x", "new_string": "y"}),
+            ("tests", "Bash", {"command": "pytest -q"}),
+        ]
+        for source, name, arguments in calls:
+            queue.handle(
+                "claude",
+                payload("PreToolUse", tool_use_id=source, tool_name=name, tool_input=arguments),
+                tools,
+                runtime,
+                "team",
+            )
+        for source, name, arguments in calls:
+            queue.handle(
+                "claude",
+                payload(
+                    "PostToolUse",
+                    tool_use_id=source,
+                    tool_name=name,
+                    tool_input=arguments,
+                    tool_response={"exitCode": 0, "success": True},
+                ),
+                tools,
+                runtime,
+                "team",
+            )
+        gaps = json.loads(queue.listing()[0]["gaps"])
+        assert "parallel_tool_dependencies_unknown" not in gaps
+        events = [
+            json.loads(row[0])
+            for row in queue.db.execute(
+                "SELECT payload FROM events WHERE run=? ORDER BY sequence", (token,)
+            )
+        ]
+        tests = next(e for e in events if e.get("tool_name") == "Bash")
+        assert tests["outcome_verified"] is False  # it ran while a.py was being edited
+    finally:
+        queue.close()
+
+
+def test_a_refused_read_does_not_spoil_the_session(tmp_path):
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+    try:
+        queue.handle("claude", payload("UserPromptSubmit", prompt="Task"), tools, runtime, "team")
+        # The agent asked to look around; the command was refused and never finished.
+        queue.handle(
+            "claude",
+            payload(
+                "PreToolUse",
+                tool_use_id="refused",
+                tool_name="Bash",
+                tool_input={"command": "ls && cat a.py | head -50"},
+            ),
+            tools,
+            runtime,
+            "team",
+        )
+        queue.handle(
+            "claude",
+            payload("PreToolUse", tool_use_id="tests", tool_name="Bash",
+                    tool_input={"command": "pytest -q"}),
+            tools,
+            runtime,
+            "team",
+        )  # fmt: skip
+        queue.handle(
+            "claude",
+            payload(
+                "PostToolUse",
+                tool_use_id="tests",
+                tool_name="Bash",
+                tool_input={"command": "pytest -q"},
+                tool_response={"exitCode": 0},
+            ),
+            tools,
+            runtime,
+            "team",
+        )
+        queue.handle("claude", payload("Stop"), tools, runtime, "team")
+        gaps = json.loads(queue.listing()[0]["gaps"])
+        assert "parallel_tool_dependencies_unknown" not in gaps
+        assert "unfinished_tool" not in gaps
+    finally:
+        queue.close()
+
+
+def test_a_refused_command_that_never_ran_does_not_spoil_the_session(tmp_path):
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+    transcript = tmp_path / "session.jsonl"
+    script = "python3 - <<'E'\nopen('a.py','w').write('x')\nE"
+    try:
+        queue.handle(
+            "claude",
+            payload("UserPromptSubmit", prompt="Task", transcript_path=str(transcript)),
+            tools,
+            runtime,
+            "team",
+        )
+        queue.handle(
+            "claude",
+            payload("PreToolUse", tool_use_id="refused", tool_name="Bash",
+                    tool_input={"command": script}, transcript_path=str(transcript)),
+            tools,
+            runtime,
+            "team",
+        )  # fmt: skip
+        # Claude Code refused it: an error result in the transcript, and no PostToolUse.
+        refusal = {"type": "tool_result", "tool_use_id": "refused", "is_error": True,
+                   "content": "This Bash command requires approval"}  # fmt: skip
+        transcript.write_text(json.dumps({"type": "user", "message": {"content": [refusal]}}))
+        for event in ("PreToolUse", "PostToolUse"):
+            queue.handle(
+                "claude",
+                payload(event, tool_use_id="tests", tool_name="Bash",
+                        tool_input={"command": "pytest -q"}, tool_response={"exitCode": 0},
+                        transcript_path=str(transcript)),
+                tools,
+                runtime,
+                "team",
+            )  # fmt: skip
+        queue.handle(
+            "claude", payload("Stop", transcript_path=str(transcript)), tools, runtime, "team"
+        )
+        gaps = json.loads(queue.listing()[0]["gaps"])
+        assert "parallel_tool_dependencies_unknown" not in gaps
+        assert "unfinished_tool" not in gaps
+    finally:
+        queue.close()

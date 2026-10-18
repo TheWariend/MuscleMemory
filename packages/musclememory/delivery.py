@@ -20,7 +20,12 @@ def tokenizer():
 
 def token_count(text):
     encoder = tokenizer()
-    return len(encoder.encode(text, disallowed_special=())) if encoder else len(text.encode())
+    if encoder:
+        return len(encoder.encode(text, disallowed_special=()))
+    # Without the tokenizer (offline, or it couldn't download), estimate: code and JSON
+    # average about 3.5 bytes per token. Counting every byte as a token cut guidance to
+    # a quarter of its budget.
+    return -(-len(text.encode()) * 2 // 7)
 
 
 def render_pointer(result, budget=350):

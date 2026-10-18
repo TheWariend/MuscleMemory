@@ -162,6 +162,9 @@ class HookQueue:
             CREATE TABLE IF NOT EXISTS claims (
                 run TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, path TEXT,
                 PRIMARY KEY(run,source));
+            CREATE TABLE IF NOT EXISTS overlaps (
+                run TEXT NOT NULL, source TEXT NOT NULL, path TEXT NOT NULL,
+                PRIMARY KEY(run,source,path));
             CREATE TABLE IF NOT EXISTS snapshots (
                 run TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
                 PRIMARY KEY(run,source));
@@ -191,6 +194,41 @@ class HookQueue:
         except BaseException:
             self.db.execute("ROLLBACK")
             raise
+
+    def _drop_refused(self, token, transcript_path):
+        """Forget calls the agent's transcript shows were refused before they ran.
+
+        A call that never finished but already has an error result was stopped before it
+        ran, by a permission prompt in a headless session, say. It changed nothing.
+        """
+        sources = {
+            row[0] for row in self.db.execute("SELECT source FROM claims WHERE run=?", (token,))
+        }
+        if not sources or not isinstance(transcript_path, str):
+            return
+        try:
+            lines = Path(transcript_path).read_text(errors="ignore").splitlines()[-4000:]
+        except OSError:
+            return
+        refused = set()
+        for line in lines:
+            if '"tool_result"' not in line or '"is_error"' not in line:
+                continue
+            try:
+                content = (json.loads(line).get("message") or {}).get("content")
+            except ValueError:
+                continue
+            for item in content if isinstance(content, list) else []:
+                if (
+                    isinstance(item, dict)
+                    and item.get("type") == "tool_result"
+                    and item.get("is_error") is True
+                    and item.get("tool_use_id") in sources
+                ):
+                    refused.add(item["tool_use_id"])
+        for source in refused:
+            for table in ("claims", "active", "snapshots", "overlaps"):
+                self.db.execute(f"DELETE FROM {table} WHERE run=? AND source=?", (token, source))
 
     @staticmethod
     def _claim(name, arguments, tools):
@@ -316,8 +354,12 @@ class HookQueue:
                 self.gap(token, "configuration_changed")
                 return token, "configuration_changed"
             if event_name in {"Stop", "stop", "Interrupt", "SessionEnd", "sessionEnd"}:
-                if self.db.execute("SELECT 1 FROM active WHERE run=?", (token,)).fetchone():
+                # A refused or abandoned read never ran or changed nothing; only an
+                # unfinished change or command leaves the session's effects unknown.
+                self._drop_refused(token, payload.get("transcript_path"))
+                if self.db.execute("SELECT 1 FROM claims WHERE run=?", (token,)).fetchone():
                     self.gap(token, "unfinished_tool")
+                self.db.execute("DELETE FROM active WHERE run=?", (token,))
                 self.db.execute("UPDATE runs SET ended=1 WHERE token=?", (token,))
                 passed = self._tests_passed(token) if event_name in {"Stop", "stop"} else None
                 if passed and not row["closed"]:
@@ -368,18 +410,33 @@ class HookQueue:
                     "SELECT 1 FROM events WHERE run=? AND source=?", (token, source)
                 ).fetchone():
                     return token, "duplicate_start"
-                # Overlapping reads, and edits to different files, can't affect each other.
-                # A shell command or test run alongside anything leaves the order unknown.
+                # Reads overlap anything, and edits to different files overlap each other.
+                # Two commands at once, or two edits of one file, leave the order unknown.
+                # A command alongside edits is kept, but can't prove the tests passed.
                 kind, path = self._claim(name, payload.get("tool_input"), tools)
-                others = self.db.execute(
-                    "SELECT 1 FROM active WHERE run=? AND source!=?", (token, source)
-                ).fetchone()
-                conflict = self.db.execute(
-                    "SELECT 1 FROM claims WHERE run=? AND source!=? AND (kind='any' OR path=?)",
-                    (token, source, path),
-                ).fetchone()
-                if others and (kind == "any" or conflict):
-                    self.gap(token, "parallel_tool_dependencies_unknown")
+                if kind:
+                    self._drop_refused(token, payload.get("transcript_path"))
+                rivals = (
+                    self.db.execute(
+                        "SELECT source, kind, path FROM claims WHERE run=? AND source!=?",
+                        (token, source),
+                    ).fetchall()
+                    if kind
+                    else []
+                )
+                for rival in rivals:
+                    if kind == rival["kind"] and (kind == "any" or path == rival["path"]):
+                        self.gap(token, "parallel_tool_dependencies_unknown")
+                    elif kind == "any":
+                        self.db.execute(
+                            "INSERT OR IGNORE INTO overlaps VALUES (?,?,?)",
+                            (token, source, rival["path"]),
+                        )
+                    elif rival["kind"] == "any":
+                        self.db.execute(
+                            "INSERT OR IGNORE INTO overlaps VALUES (?,?,?)",
+                            (token, rival["source"], path),
+                        )
                 self.db.execute(
                     "INSERT OR IGNORE INTO active VALUES (?,?,?)", (token, source, time.time())
                 )
@@ -419,6 +476,13 @@ class HookQueue:
                 "SELECT kind FROM claims WHERE run=? AND source=?", (token, source)
             ).fetchone()
             self.db.execute("DELETE FROM claims WHERE run=? AND source=?", (token, source))
+            overlapped = [
+                item[0]
+                for item in self.db.execute(
+                    "SELECT path FROM overlaps WHERE run=? AND source=?", (token, source)
+                )
+            ]
+            self.db.execute("DELETE FROM overlaps WHERE run=? AND source=?", (token, source))
             if row["ended"]:
                 self.gap(token, "tool_after_stop")
             if name not in tools:
@@ -446,6 +510,13 @@ class HookQueue:
                 # An edit changes its own file; another file changed meanwhile was another call.
                 own = arguments.get("file_path")
                 changed = [item for item in changed if item == own]
+            if changed and overlapped:
+                # Files that edits running alongside this command changed were theirs.
+                theirs = {
+                    workspace.relative_path(item, spellings) if spellings else item
+                    for item in overlapped
+                }
+                changed = [item for item in changed if item not in theirs]
             if changed:
                 arguments[WORKSPACE_CHANGES] = changed[:64]
             response = payload.get("tool_response", payload.get("tool_output"))
@@ -505,6 +576,9 @@ class HookQueue:
                 elif verdict is None:
                     outcome_verified = False
                     self.gap(token, "unverified_exit_status")
+            if overlapped:
+                # It ran while files were being edited, so it proves nothing about them.
+                outcome_verified = False
             self.append(
                 token,
                 source,

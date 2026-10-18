@@ -619,7 +619,10 @@ def query_keys(query):
         words = []
     for word in words:
         word = word.strip("'\"`,:;()[]")
-        if re.search(r"(?:/|\.[a-zA-Z0-9]{1,8}$)", word) and (path := normalized_path(word)):
+        # A path, or a name with a file extension; "0.9" or "v1.2" is a number, not a file.
+        if re.search(r"(?:/|\.[a-zA-Z0-9]*[a-zA-Z][a-zA-Z0-9]*$)", word) and (
+            path := normalized_path(word)
+        ):
             keys.add(("artifact", path))
     return keys
 

@@ -11,7 +11,13 @@ import httpx
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Float, and_, cast, func, or_, select, text
 
-from .artifacts import extract_experience, needs_test_proof, query_keys
+from .artifacts import (
+    extract_experience,
+    needs_test_proof,
+    operation_categories,
+    query_keys,
+    targets,
+)
 from .compiler import signature
 from .core import DomainError
 from .shapes import bound_capability, conditions_satisfied
@@ -466,6 +472,12 @@ def hybrid_candidates(session, tenant, namespace, query, vector, space, limit):
     )
 
 
+def same_place(asked, path):
+    """A requested path and a skill's path name the same file, or one holds the other."""
+    asked, path = asked.rstrip("/"), path.rstrip("/")
+    return asked == path or path.startswith(asked + "/") or asked.startswith(path + "/")
+
+
 def rank_candidates(candidates, query, vector, profile, settings, embedding_space=None):
     candidates = list(candidates)
     lexical = bm25_scores([r.search_text for _, r in candidates], query)
@@ -480,14 +492,27 @@ def rank_candidates(candidates, query, vector, profile, settings, embedding_spac
         ],
     )
     keys = query_keys(query)
-    exact_targets = []
+    exact_targets, other_targets = [], []
     for _, revision in candidates:
         experience = revision.definition.get("experience") or extract_experience(
             revision.definition["steps"]
         )
-        stored_keys = {("artifact", p) for p in [*experience["reads"], *experience["writes"]]}
+        # A test script every task runs says nothing about which task this is.
+        testing = set()
+        for step in revision.definition["steps"]:
+            if "verify" in operation_categories(step["arguments"], step["capability"]):
+                testing.update(*targets(step["arguments"], step["effect"], step["capability"]))
+        touched = {*experience["reads"], *experience["writes"]} - testing
+        stored_keys = {("artifact", p) for p in touched}
         stored_keys.update(("command", c) for c in experience["commands"])
         exact_targets.append(len(keys & stored_keys))
+        # The request names folders or files to work in, and the skill changed none of
+        # them: it is a different task in the same project.
+        named = {p for kind, p in keys if kind == "artifact" and "/" in p} - testing
+        other_targets.append(
+            bool(named and experience["writes"])
+            and not any(same_place(asked, path) for asked in named for path in touched)
+        )
     tokens = [p.procedure_token for p, _ in candidates]
     # Stable text tie-breaks keep different task families independent of UUIDs.
     tie_keys = [
@@ -524,6 +549,8 @@ def rank_candidates(candidates, query, vector, profile, settings, embedding_spac
         if freshness is None or not conditions_satisfied(
             definition.get("applicability_conditions", []), profile, []
         ):
+            continue
+        if other_targets[index]:
             continue
         exact = float(
             signature(query) == definition["intent_signature"] or exact_targets[index] > 0

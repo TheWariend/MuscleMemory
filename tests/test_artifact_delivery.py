@@ -281,3 +281,12 @@ def test_edits_keep_only_changed_lines_and_separate_changes():
         {"file": "app/money.py", "before": "    return 1", "after": "    return 2"}
     ]
     assert patch_edits({**edit, "new_string": edit["old_string"]}, "filesystem.edit") == []
+
+
+def test_without_the_tokenizer_the_estimate_is_close_not_four_times_over(monkeypatch):
+    from musclememory import delivery
+
+    monkeypatch.setattr(delivery, "tokenizer", lambda: None)
+    text = '{"file": "parcelkit/settings.py", "after": "result[key] = value"}'
+    assert delivery.token_count(text) == -(-len(text) * 2 // 7)
+    assert delivery.token_count(text) < len(text) / 3

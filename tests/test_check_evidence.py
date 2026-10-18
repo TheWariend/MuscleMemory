@@ -547,3 +547,48 @@ def test_agents_do_not_see_the_text_of_commands_that_changed_files():
     assert "sed" not in shown["steps"][0]["arguments"]["command"]
     assert shown["steps"][0]["arguments"]["$mm_workspace_changes"] == ["x.py"]
     assert shown["steps"][1]["arguments"]["command"] == "pytest -q"
+
+
+def test_a_skill_for_one_folder_is_not_served_for_a_task_in_another(service, principal):
+    from musclememory.core import RecallInput
+
+    ability = ("community/weather/main.py", "def call(city):\n    return TABLE[city]\n")
+    write_session(service, principal, "training", [ability])
+    token = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={"succeeded": True, "evidence_event_ids": ["test"], "summary": "ok"},
+            learning_policy={},
+        ),
+    )["procedure_token"]
+    for check in ("check-1", "check-2"):
+        write_session(service, principal, check, [ability])
+        assert service.auto_learn(principal, check, hint=token)["action"] == "checked"
+    service.approve(principal, token)
+    profile = RuntimeProfile(
+        agent_name="claude", bindings={"filesystem.write": "Write", "shell.execute": "Bash"}
+    )
+
+    def recall(text):
+        return service.recall(
+            principal,
+            RecallInput(intent_text=text, visibility_scope="team", runtime_profile=profile),
+        )["candidates"]
+
+    # Sharing the project's test command is not being the same task.
+    other = (
+        "Build a currency ability in community/currency/ at rate 0.9, "
+        "run pytest tests/test_settings.py"
+    )
+    assert recall(other) == []
+    same = "Update community/weather/main.py and run pytest tests/test_settings.py"
+    assert [c["procedure_token"] for c in recall(same)] == [token]
+
+
+def test_numbers_in_a_request_are_not_files():
+    from musclememory.artifacts import query_keys
+
+    keys = query_keys("convert at 0.9 then edit config.yaml and src/app.py for v1.2")
+    assert ("artifact", "0.9") not in keys and ("artifact", "1.2") not in keys
+    assert {("artifact", "config.yaml"), ("artifact", "src/app.py")} <= keys
