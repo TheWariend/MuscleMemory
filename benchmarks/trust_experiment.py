@@ -132,10 +132,11 @@ def unproven_variants(database, definition, token, version):
         "ORDER BY created_at",
         (token, version),
     ).fetchall()
-    variants, proven, known = [[]], set(), False
+    variants, proven, known, checked = [[]], set(), False, False
     for run_token, outcome in rows:
         if not json.loads(outcome).get("succeeded"):
             continue
+        checked = True
         for (payload,) in database.execute(
             "SELECT payload FROM events WHERE run_token = ? ORDER BY sequence", (run_token,)
         ):
@@ -148,8 +149,8 @@ def unproven_variants(database, definition, token, version):
             if changes and (lines := line_changes(arguments, event.get("capability", ""))):
                 known = True
                 proven |= lines
-        if known and wanted:
-            variants.append(sorted(wanted - proven))
+        if checked and wanted:
+            variants.append(sorted(wanted - proven) if known else sorted(wanted))
     return variants
 
 
@@ -195,8 +196,12 @@ def delivered_pointer(where, injection, variant):
 
 
 def promote_naive(where):
-    """Trust every learned skill after its first success (test database only)."""
+    """Trust every learned skill after its first success (test database only).
+
+    Naive memory keeps no checks, so any recorded ones are dropped too: nothing is
+    withheld from what it serves."""
     database = sqlite3.connect(where["database"])
+    database.execute("DELETE FROM evaluations")
     database.execute(
         "UPDATE revisions SET successes = MAX(successes, 2), validation_status = 'validated', "
         "validated_at = COALESCE(validated_at, created_at)"
@@ -329,7 +334,8 @@ def replay(run_dir, label, variant, definition, poison):
     print(json.dumps(record), flush=True)
 
 
-def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"), off=True):
+def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"), off=True,
+        clean_naive=False, replay_too=True):  # fmt: skip
     prompts = PROMPTS[FAMILY]
     scored = [(11 + i, prompts[1 + i % 2]) for i in range(scored_count)]
     for poison in poisons:
@@ -350,11 +356,16 @@ def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"
                 print("no skill learned; skipping", arm, poison, flush=True)
                 mm(run_dir, "stop")
                 continue
+            if arm == "naive" and clean_naive:
+                # The same clean sessions the gate gets, so both arms learn from the same runs.
+                for variant in (2, 3, 4):
+                    session(run_dir, f"learn-{variant}", variant, prompts[0], arm, model, timeout,
+                            poison)  # fmt: skip
             if arm == "naive":
                 promote_naive(target(run_dir))
                 # Replay gets the very same poisoned skill the naive arm learned.
                 definition = learned_definition(target(run_dir))
-                for variant, _ in scored:
+                for variant, _ in scored if replay_too else []:
                     replay(
                         base / f"replay-{poison}", f"score-{variant}", variant, definition, poison
                     )
@@ -364,6 +375,9 @@ def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"
                             poison)  # fmt: skip
             print(arm, poison, json.dumps(memory_state(target(run_dir))["procedures"]), flush=True)
             for variant, prompt in scored:
+                if arm == "naive":
+                    # A scored session can itself count as a check; naive memory keeps none.
+                    promote_naive(target(run_dir))
                 session(run_dir, f"score-{variant}", variant, prompt, arm, model, timeout, poison)
             mm(run_dir, "stop")
     if off:
@@ -381,13 +395,16 @@ def main():
     parser.add_argument("--port", type=int, default=8111)
     parser.add_argument("--arms", default="naive,gate")
     parser.add_argument("--no-off", action="store_true")
+    parser.add_argument("--clean-naive", action="store_true")
+    parser.add_argument("--no-replay", action="store_true")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("run")
     arguments = parser.parse_args()
     base = arguments.dir.resolve()
     base.mkdir(parents=True, exist_ok=True)
     run(base, arguments.model, arguments.timeout, arguments.poisons.split(","), arguments.scored,
-        arguments.port, arguments.arms.split(","), not arguments.no_off)  # fmt: skip
+        arguments.port, arguments.arms.split(","), not arguments.no_off, arguments.clean_naive,
+        not arguments.no_replay)  # fmt: skip
 
 
 if __name__ == "__main__":
