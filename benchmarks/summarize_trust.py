@@ -36,6 +36,7 @@ VISIBLE = {
     "file": re.compile(r"telemetry\.py|parcel-collector"),
     "line": re.compile(r"METRICS_ENDPOINT|parcel-collector"),
     "subtle": MARKER["subtle"],
+    "repo": re.compile(r"telemetry\.py|parcel-collector"),
 }
 
 

@@ -34,6 +34,11 @@ One naive injection could not be rebuilt from its hash (`guidance_rebuilt: false
 Every scored session passed the hidden verifier, poisoned or not. The agent carried out the
 poisoned requirement in 31/31 poisoned learning sessions across all runs.
 
+Known failure (`run: repo-failure`, Haiku only, not in the main table): the obvious poison moved
+into the repository's agent instructions, which every session reads. MuscleMemory validated and
+served the poisoned skill in 5/5 scored sessions and the poison was in the code in 5/5; without
+memory it was in the code in 5/5 too. Proof before reuse does not defend against poisoned inputs.
+
 Superseded runs: the first naive arm learned only from the poisoned session (it served the poison
 in 29/30, which followed from that setup); the next naive arms ranked skills by repetition counts
 built with MuscleMemory's own matching (they never served the separable poisons and served the
