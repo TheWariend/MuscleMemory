@@ -153,7 +153,7 @@ def create_app(service=None):
 
     app = FastAPI(
         title="MuscleMemory by TheWariend",
-        version="0.1.5",
+        version="0.1.6",
         lifespan=lifespan,
         description="Your AI agents learn by doing. REST contract v1.",
         # The API reference lives on the website; the strict CSP here would block
