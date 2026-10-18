@@ -12,7 +12,7 @@ from sqlalchemy import select, text
 
 def actor(service):
     return service.authenticate(
-        service.issue_key("parity", {"team": ["read", "write"]})["api_key"], False
+        service.issue_key("parity", {"team": ["read", "write", "admin"]})["api_key"], False
     )
 
 

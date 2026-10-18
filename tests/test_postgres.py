@@ -27,7 +27,7 @@ def test_postgres_migration_fulltext_vector_and_isolation():
     try:
         migrate(schema_url, version_table_schema=schema)
         service = MemoryService(Settings(database_url=schema_url))
-        credential = service.issue_key("pg-test", {"team": ["read", "write", "delete"]})
+        credential = service.issue_key("pg-test", {"team": ["read", "write", "delete", "admin"]})
         actor = service.authenticate(credential["api_key"], False)
         result = validated(service, actor)
         response = service.recall(

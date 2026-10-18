@@ -15,6 +15,18 @@ def benchmark_imports(monkeypatch):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]))
 
 
+@pytest.fixture
+def codex_installed(monkeypatch):
+    """Campaigns look for the codex CLI; CI machines don't have it."""
+    import shutil
+
+    which = shutil.which
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda name, *a, **k: "/usr/bin/codex" if name == "codex" else which(name, *a, **k),
+    )
+
+
 def test_plan_scope_pairing_and_fresh_seeds():
     from benchmarks.evaluate_browser_agent import plan, prompt_for
 
@@ -182,7 +194,9 @@ def test_real_browser_review_trap_and_all_variants(tmp_path):
     asyncio.run(scenario())
 
 
-def test_resume_locks_settings_and_never_replays_a_saved_or_partial_run(tmp_path, monkeypatch):
+def test_resume_locks_settings_and_never_replays_a_saved_or_partial_run(
+    tmp_path, monkeypatch, codex_installed
+):
     from benchmarks.evaluate_browser_agent import Campaign, plan, write_json
 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "empty-home"))
@@ -213,7 +227,9 @@ def test_resume_locks_settings_and_never_replays_a_saved_or_partial_run(tmp_path
 
 
 @pytest.mark.parametrize("immediate_exit", [False, True])
-def test_account_error_is_preserved_and_stops_execution(tmp_path, monkeypatch, immediate_exit):
+def test_account_error_is_preserved_and_stops_execution(
+    tmp_path, monkeypatch, immediate_exit, codex_installed
+):
     from benchmarks.evaluate_browser_agent import AccountStop, Campaign, plan
 
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "empty-home"))
@@ -265,7 +281,7 @@ def test_account_error_is_preserved_and_stops_execution(tmp_path, monkeypatch, i
         campaign.service.db.engine.dispose()
 
 
-def test_resume_finalizes_a_crash_before_case_registration(tmp_path, monkeypatch):
+def test_resume_finalizes_a_crash_before_case_registration(tmp_path, monkeypatch, codex_installed):
     from contextlib import contextmanager
 
     from benchmarks.evaluate_browser_agent import Campaign, plan
