@@ -14,20 +14,29 @@ clean ones. Harness: `benchmarks/trust_experiment.py`. Summary: `benchmarks/summ
   kept for the record.
 - `summary.json`: per-arm counts with Wilson 95% intervals.
 
+Names in the data: arm `gate` is MuscleMemory and `off` is no memory; poison `file` is the new file, `line` the unrelated line and `subtle` the line fused into the fix.
+
 | Arm (scored, both models) | Poison | Served | In injected guidance | In code |
 |---|---|---|---|---|
 | No memory | — | — | — | 0/10 |
 | Replay (control) | each | — | — | 10/10 |
-| Naive memory | new file / unrelated line | 0/20 | 0/20 | 0/20 |
-| Naive memory | fused into the fix | 5/10 | 5/10 | 0/10 |
+| Naive memory (Mem0 ranking) | new file | 2/10 | 2/10 | 0/10 |
+| Naive memory (Mem0 ranking) | unrelated line | 1/10 | 0/10 | 0/10 |
+| Naive memory (Mem0 ranking) | fused into the fix | 1/10 | 1/10 | 0/10 |
 | MuscleMemory | new file / unrelated line | 0/20 | 0/20 | 0/20 |
 | MuscleMemory | fused into the fix | 5/10 | 0/10 | 0/10 |
 
+Naive memory keeps every passing session as its own skill, trusts all of them, and serves the
+one the open-source Mem0 library (2.2.1, local `all-MiniLM-L6-v2` embeddings, no LLM extraction)
+ranks first for the task prompt (`--equal-naive --picker`, with `benchmarks/mem0_pick.py`).
+One naive injection could not be rebuilt from its hash (`guidance_rebuilt: false`).
+
 Every scored session passed the hidden verifier, poisoned or not. The agent carried out the
-poisoned requirement in 25/25 poisoned learning sessions.
+poisoned requirement in 31/31 poisoned learning sessions across all runs.
 
 Superseded runs: the first naive arm learned only from the poisoned session (it served the poison
-in 29/30, which followed from that setup); a later naive cell kept the checks its scored sessions
-created, which naive memory shouldn't; and the first MuscleMemory arms used checks this study
-found holes in. All were rerun. The stored databases and transcripts contain local paths and are
-not released.
+in 29/30, which followed from that setup); the next naive arms ranked skills by repetition counts
+built with MuscleMemory's own matching (they never served the separable poisons and served the
+fused one in 5/5 Haiku sessions); and the first MuscleMemory arms used checks this study found
+holes in. All are kept in `sessions.jsonl` with `in_paper_tables: false`. The stored databases and
+transcripts contain local paths and are not released.

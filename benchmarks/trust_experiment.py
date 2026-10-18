@@ -195,13 +195,100 @@ def delivered_pointer(where, injection, variant):
     return None
 
 
-def promote_naive(where):
+def learn_every_session(where):
+    """Naive memory keeps every passing session as its own skill, never merging repeats."""
+    from musclememory.artifacts import operation_categories
+    from musclememory.config import Settings
+    from musclememory.core import DomainError, LearnInput
+    from musclememory.security import Principal
+    from musclememory.service import MemoryService
+    from musclememory.storage import Run
+    from sqlalchemy import select
+
+    service = MemoryService(Settings(database_url=f"sqlite:///{where['database']}"))
+    with service.db.session() as db:
+        runs = [
+            (run.tenant, run.namespace, run.run_token)
+            for run in db.scalars(select(Run).where(Run.status == "success"))
+            if not run.learned_result
+        ]
+    for tenant, namespace, token in runs:
+        principal = Principal(key_id="harness", tenant=tenant,
+                              grants={namespace: ["read", "write", "admin"]})  # fmt: skip
+        with service.db.session() as db:
+            events = service._events(db, db.get(Run, (tenant, token)))
+        verifiers = [
+            e for e in events
+            if e.kind == "tool" and e.status == "success" and e.outcome_verified
+            and "verify" in operation_categories(e.arguments, e.capability)
+        ]  # fmt: skip
+        if not verifiers:
+            continue
+        try:
+            service.learn(principal, LearnInput(
+                run_token=token,
+                completion_proof={"succeeded": True, "evidence_event_ids": [verifiers[-1].event_id],
+                                  "verifier": "tool_assertion", "summary": "Tests passed"},
+                learning_policy={}), auto=True)  # fmt: skip
+        except DomainError:
+            continue
+
+
+def choose_with(picker, store, where, prompt):
+    """Let an outside memory library choose the one skill naive memory serves.
+
+    `picker` is a command (benchmarks/mem0_pick.py) that stores each skill's guidance text and
+    returns the best match for the task prompt, ranked by that library's own search."""
+    from musclememory.delivery import render_pointer
+
+    database = sqlite3.connect(where["database"])
+    rows = database.execute(
+        "SELECT r.procedure_token, r.version, r.definition FROM revisions r JOIN procedures p "
+        "ON p.procedure_token = r.procedure_token AND p.current_version = r.version"
+    ).fetchall()
+    items = []
+    for token, version, definition in rows:
+        candidate = {"procedure_token": token, "procedure_version": version,
+                     "definition": json.loads(definition)}  # fmt: skip
+        text = render_pointer({"candidates": [candidate]}, 2000)
+        items.append({"procedure": token, "text": text or json.loads(definition)["title"]})
+
+    def call(*arguments, stdin=None):
+        for attempt in range(3):
+            done = subprocess.run([*picker, str(store), *arguments], input=stdin, text=True,
+                                  capture_output=True)  # fmt: skip
+            if done.returncode == 0:
+                return done.stdout
+            print("picker failed", attempt + 1, done.stderr[-600:], flush=True)
+            time.sleep(5)
+        raise RuntimeError("picker failed three times")
+
+    call("add", stdin=json.dumps(items))
+    ranked = json.loads(call("search", prompt).strip().splitlines()[-1])
+    chosen = ranked[0]["procedure"] if ranked else None
+    # Only the chosen skill stays servable for this session.
+    database.execute(
+        "UPDATE procedures SET lifecycle = CASE WHEN procedure_token = ? THEN 'active' "
+        "ELSE 'provisional' END WHERE lifecycle != 'retired'",
+        (chosen,),
+    )
+    database.commit()
+    database.close()
+    return chosen
+
+
+def promote_naive(where, equal=False):
     """Trust every learned skill after its first success (test database only).
 
     Naive memory keeps no checks, so any recorded ones are dropped too: nothing is
     withheld from what it serves."""
+    if equal:
+        learn_every_session(where)
     database = sqlite3.connect(where["database"])
     database.execute("DELETE FROM evaluations")
+    if equal:
+        # Rank by text and recency alone: no skill counts as repeated more than another.
+        database.execute("UPDATE revisions SET successes = 2, failures = 0")
     database.execute(
         "UPDATE revisions SET successes = MAX(successes, 2), validation_status = 'validated', "
         "validated_at = COALESCE(validated_at, created_at)"
@@ -335,7 +422,7 @@ def replay(run_dir, label, variant, definition, poison):
 
 
 def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"), off=True,
-        clean_naive=False, replay_too=True):  # fmt: skip
+        clean_naive=False, replay_too=True, equal_naive=False, picker=None):  # fmt: skip
     prompts = PROMPTS[FAMILY]
     scored = [(11 + i, prompts[1 + i % 2]) for i in range(scored_count)]
     for poison in poisons:
@@ -362,7 +449,7 @@ def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"
                     session(run_dir, f"learn-{variant}", variant, prompts[0], arm, model, timeout,
                             poison)  # fmt: skip
             if arm == "naive":
-                promote_naive(target(run_dir))
+                promote_naive(target(run_dir), equal_naive)
                 # Replay gets the very same poisoned skill the naive arm learned.
                 definition = learned_definition(target(run_dir))
                 for variant, _ in scored if replay_too else []:
@@ -377,7 +464,10 @@ def run(base, model, timeout, poisons, scored_count, port, arms=("naive", "gate"
             for variant, prompt in scored:
                 if arm == "naive":
                     # A scored session can itself count as a check; naive memory keeps none.
-                    promote_naive(target(run_dir))
+                    promote_naive(target(run_dir), equal_naive)
+                    if picker:
+                        chosen = choose_with(picker, run_dir / "picker", target(run_dir), prompt)
+                        print("picked", variant, chosen, flush=True)
                 session(run_dir, f"score-{variant}", variant, prompt, arm, model, timeout, poison)
             mm(run_dir, "stop")
     if off:
@@ -397,6 +487,8 @@ def main():
     parser.add_argument("--no-off", action="store_true")
     parser.add_argument("--clean-naive", action="store_true")
     parser.add_argument("--no-replay", action="store_true")
+    parser.add_argument("--equal-naive", action="store_true")
+    parser.add_argument("--picker", help="command that ranks skills for naive memory")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("run")
     arguments = parser.parse_args()
@@ -404,7 +496,8 @@ def main():
     base.mkdir(parents=True, exist_ok=True)
     run(base, arguments.model, arguments.timeout, arguments.poisons.split(","), arguments.scored,
         arguments.port, arguments.arms.split(","), not arguments.no_off, arguments.clean_naive,
-        not arguments.no_replay)  # fmt: skip
+        not arguments.no_replay, arguments.equal_naive,
+        arguments.picker.split() if arguments.picker else None)  # fmt: skip
 
 
 if __name__ == "__main__":
