@@ -228,3 +228,42 @@ def test_project_test_runners_count_as_checks(command):
 
     assert "verify" in operation_categories({"command": command}, "shell.execute")
     assert test_command(command)
+
+
+@pytest.mark.parametrize(
+    ("check", "skill", "counts"),
+    [
+        (
+            "python3 -m unittest discover -s tests -t . -v",
+            "python3 -m unittest discover -s tests -v",
+            True,
+        ),
+        (
+            "python3 -I -m unittest discover -s tests -v 2>&1 | tail -20",
+            "python3 -m unittest discover -s tests",
+            True,
+        ),
+        ("python3 -m unittest", "python3 -m unittest discover -s tests -v", True),
+        (
+            "python3 -m unittest discover -s tests",
+            "python3 -m unittest tests.test_contracts -v",
+            True,
+        ),
+        (
+            "python3 -m unittest tests.test_contracts",
+            "python3 -m unittest discover -s tests",
+            False,
+        ),
+        ("uv run pytest -q", "pytest tests/test_x.py::test_y", True),
+        ("pytest tests", "pytest tests/test_x.py", True),
+        ("pytest tests/test_x.py", "pytest tests", False),
+        ("pytest -k merge", "pytest", False),
+        ("pytest -q", "python3 -m unittest discover -s tests", False),
+        ("npm test", "npm test", True),
+        ("npm test -- --watch=false", "npm test", False),
+    ],
+)
+def test_a_check_may_run_the_same_tests_or_more_however_it_spells_them(check, skill, counts):
+    from musclememory.artifacts import test_covers
+
+    assert test_covers(check, skill) is counts

@@ -266,10 +266,13 @@ def test_parallel_and_unknown_tools_block_attestation(tmp_path):
         token, _ = queue.handle(
             "claude", payload("UserPromptSubmit", prompt="Task"), tools, runtime, "team"
         )
-        for source in ["first", "second"]:
+        for source, name, arguments in [
+            ("first", "Edit", {"file_path": "a.py", "old_string": "a", "new_string": "b"}),
+            ("second", "Edit", {"file_path": "a.py", "old_string": "b", "new_string": "c"}),
+        ]:
             queue.handle(
                 "claude",
-                payload("PreToolUse", tool_use_id=source, tool_name="Read"),
+                payload("PreToolUse", tool_use_id=source, tool_name=name, tool_input=arguments),
                 tools,
                 runtime,
                 "team",
@@ -288,6 +291,86 @@ def test_parallel_and_unknown_tools_block_attestation(tmp_path):
         assert "parallel_tool_dependencies_unknown" in gaps
         assert "unmapped_tool:Unknown" in gaps
         assert "unfinished_tool" in gaps
+    finally:
+        queue.close()
+
+
+def test_overlapping_reads_do_not_block_learning(tmp_path):
+    queue = HookQueue(tmp_path / "state", "a" * 64)
+    tools, runtime = DEFAULT_TOOLS["claude"], profile("claude")
+    try:
+        queue.handle("claude", payload("UserPromptSubmit", prompt="Task"), tools, runtime, "team")
+        calls = [
+            ("read", "Read", {"file_path": "a.py"}),
+            ("search", "Grep", {"pattern": "merge", "path": "."}),
+            ("look", "Bash", {"command": "ls -la src 2>/dev/null"}),
+        ]
+        for source, name, arguments in calls:
+            queue.handle(
+                "claude",
+                payload("PreToolUse", tool_use_id=source, tool_name=name, tool_input=arguments),
+                tools,
+                runtime,
+                "team",
+            )
+        for source, name, arguments in calls:
+            queue.handle(
+                "claude",
+                payload(
+                    "PostToolUse",
+                    tool_use_id=source,
+                    tool_name=name,
+                    tool_input=arguments,
+                    tool_response={"exitCode": 0},
+                ),
+                tools,
+                runtime,
+                "team",
+            )
+        # Edits to different files at once can't affect each other either.
+        for source, path in [("edit-a", "a.py"), ("edit-b", "b.py")]:
+            queue.handle(
+                "claude",
+                payload(
+                    "PreToolUse",
+                    tool_use_id=source,
+                    tool_name="Edit",
+                    tool_input={"file_path": path, "old_string": "x", "new_string": "y"},
+                ),
+                tools,
+                runtime,
+                "team",
+            )
+        for source, path in [("edit-a", "a.py"), ("edit-b", "b.py")]:
+            queue.handle(
+                "claude",
+                payload(
+                    "PostToolUse",
+                    tool_use_id=source,
+                    tool_name="Edit",
+                    tool_input={"file_path": path, "old_string": "x", "new_string": "y"},
+                    tool_response={"success": True},
+                ),
+                tools,
+                runtime,
+                "team",
+            )
+        gaps = json.loads(queue.listing()[0]["gaps"])
+        assert "parallel_tool_dependencies_unknown" not in gaps
+        # A test run alongside a read still leaves the order unknown.
+        for source, name, arguments in [
+            ("read-2", "Read", {"file_path": "a.py"}),
+            ("tests", "Bash", {"command": "pytest -q"}),
+        ]:
+            queue.handle(
+                "claude",
+                payload("PreToolUse", tool_use_id=source, tool_name=name, tool_input=arguments),
+                tools,
+                runtime,
+                "team",
+            )
+        gaps = json.loads(queue.listing()[0]["gaps"])
+        assert "parallel_tool_dependencies_unknown" in gaps
     finally:
         queue.close()
 

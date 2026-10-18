@@ -49,6 +49,15 @@ def build_mcp(service, stdio_key=None):
             contract = contract_type.model_validate(arguments)
             result = await anyio.to_thread.run_sync(getattr(service, method), principal, contract)
             if method == "inspect":
+                from .artifacts import first_sentence, withhold_unproven
+
+                # Agents get what checks reproduced; people review the full record over REST.
+                result["definition"] = withhold_unproven(
+                    result["definition"], set(result.get("unproven_lines", []))
+                )
+                summary = result.get("summary") or {}
+                if summary.get("request"):
+                    summary["request"] = first_sentence(summary["request"])
                 if token_count(json.dumps(result)) > 4000:
                     raise DomainError(
                         "inspection_budget",

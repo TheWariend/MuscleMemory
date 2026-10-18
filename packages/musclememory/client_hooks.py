@@ -25,12 +25,14 @@ from .artifacts import (
     WORKSPACE_CHANGES,
     command_parts,
     documentation_only,
+    inspection_only,
     operation_categories,
 )
 from .core import ExecutionEvent, RuntimeProfile
 from .delivery import render_pointer
 from .sdk import MuscleMemoryClient
 from .security import redact
+from .shapes import FILE_CHANGE
 
 DEFAULT_TOOLS = {
     "claude": {
@@ -157,6 +159,9 @@ class HookQueue:
             CREATE TABLE IF NOT EXISTS active (
                 run TEXT NOT NULL, source TEXT NOT NULL, started REAL NOT NULL,
                 PRIMARY KEY(run,source));
+            CREATE TABLE IF NOT EXISTS claims (
+                run TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, path TEXT,
+                PRIMARY KEY(run,source));
             CREATE TABLE IF NOT EXISTS snapshots (
                 run TEXT NOT NULL, source TEXT NOT NULL, state TEXT NOT NULL,
                 PRIMARY KEY(run,source));
@@ -186,6 +191,24 @@ class HookQueue:
         except BaseException:
             self.db.execute("ROLLBACK")
             raise
+
+    @staticmethod
+    def _claim(name, arguments, tools):
+        """What a call may touch: nothing (a read, a search, `ls`), one file (an edit or
+        write), or anything (a shell command, a test run, a tool we don't know)."""
+        if name not in tools:
+            return "any", None
+        capability, effect = tools[name]
+        arguments = arguments if isinstance(arguments, dict) else {"input": arguments}
+        if inspection_only(arguments, capability):
+            return None, None
+        operations = set(operation_categories(arguments, capability))
+        if effect == "read" and not operations & {"modify", "verify"}:
+            return None, None
+        path = arguments.get("file_path")
+        if capability in FILE_CHANGE and isinstance(path, str) and path:
+            return "file", path
+        return "any", None
 
     def gap(self, run, reason):
         gaps = json.loads(
@@ -345,13 +368,26 @@ class HookQueue:
                     "SELECT 1 FROM events WHERE run=? AND source=?", (token, source)
                 ).fetchone():
                     return token, "duplicate_start"
-                if self.db.execute(
+                # Overlapping reads, and edits to different files, can't affect each other.
+                # A shell command or test run alongside anything leaves the order unknown.
+                kind, path = self._claim(name, payload.get("tool_input"), tools)
+                others = self.db.execute(
                     "SELECT 1 FROM active WHERE run=? AND source!=?", (token, source)
-                ).fetchone():
+                ).fetchone()
+                conflict = self.db.execute(
+                    "SELECT 1 FROM claims WHERE run=? AND source!=? AND (kind='any' OR path=?)",
+                    (token, source, path),
+                ).fetchone()
+                if others and (kind == "any" or conflict):
                     self.gap(token, "parallel_tool_dependencies_unknown")
                 self.db.execute(
                     "INSERT OR IGNORE INTO active VALUES (?,?,?)", (token, source, time.time())
                 )
+                if kind:
+                    self.db.execute(
+                        "INSERT OR REPLACE INTO claims VALUES (?,?,?,?)",
+                        (token, source, kind, path),
+                    )
                 if view:
                     self.db.execute(
                         "INSERT OR REPLACE INTO snapshots VALUES (?,?,?)",
@@ -379,6 +415,10 @@ class HookQueue:
                 else 0
             )
             self.db.execute("DELETE FROM active WHERE run=? AND source=?", (token, source))
+            claimed = self.db.execute(
+                "SELECT kind FROM claims WHERE run=? AND source=?", (token, source)
+            ).fetchone()
+            self.db.execute("DELETE FROM claims WHERE run=? AND source=?", (token, source))
             if row["ended"]:
                 self.gap(token, "tool_after_stop")
             if name not in tools:
@@ -402,6 +442,10 @@ class HookQueue:
             ).fetchone()
             self.db.execute("DELETE FROM snapshots WHERE run=? AND source=?", (token, source))
             changed = workspace.changed_files(json.loads(before[0]) if before else None, view)
+            if changed and claimed and claimed[0] == "file":
+                # An edit changes its own file; another file changed meanwhile was another call.
+                own = arguments.get("file_path")
+                changed = [item for item in changed if item == own]
             if changed:
                 arguments[WORKSPACE_CHANGES] = changed[:64]
             response = payload.get("tool_response", payload.get("tool_output"))

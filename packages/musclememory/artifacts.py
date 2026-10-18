@@ -35,8 +35,8 @@ LAUNCHERS = {
 }  # fmt: skip
 
 
-def test_run(words):
-    """True when one command runs a test suite, not when it only mentions tests."""
+def runner_words(words):
+    """A command without its launchers and environment: `uv run pytest -q` -> pytest -q."""
     words = list(words)
     while words:
         name = posixpath.basename(words[0])
@@ -52,6 +52,12 @@ def test_run(words):
             words = words[2:]
         else:
             break
+    return words
+
+
+def test_run(words):
+    """True when one command runs a test suite, not when it only mentions tests."""
+    words = runner_words(words)
     if not words:
         return False
     name, rest = posixpath.basename(words[0]), words[1:]
@@ -159,6 +165,109 @@ def test_command(command):
                 kept.append(word)
         return shlex.join(kept) if kept else None
     return None
+
+
+# Flags that only change how results are reported, never which tests run.
+QUIET = {
+    "pytest": {"-v", "-vv", "-vvv", "-q", "-qq", "-x", "-s", "-l", "-rA", "-ra", "--verbose",
+               "--quiet", "--exitfirst", "--no-header", "--color=yes", "--color=no",
+               "--disable-warnings", "-p no:cacheprovider"},
+    "unittest": {"-v", "-q", "-f", "-b", "-c", "--locals", "--verbose", "--quiet", "--failfast",
+                 "--buffer", "--catch"},
+}  # fmt: skip
+VALUED = {"pytest": {"--tb", "--maxfail", "--durations", "-n", "--timeout", "--rootdir", "-W"},
+          "unittest": {"-t", "--top-level-directory"}}  # fmt: skip
+
+
+def test_selection(command):
+    """(runner, tests run) for a pytest or unittest command, or None for anything else.
+
+    Tests run are paths; an empty set is the whole suite. Options that narrow the run in
+    ways we can't compare (-k, -m, -p, a config file) make the selection unknown."""
+    tested = test_command(command)
+    if not tested:
+        return None
+    words = runner_words(command_parts(tested))
+    if not words:
+        return None
+    name, rest = posixpath.basename(words[0]), words[1:]
+    if re.fullmatch(r"python[\d.]*", name):
+        while rest and rest[0].startswith("-") and rest[0] != "-m":
+            rest = rest[1:]
+        if rest[:1] != ["-m"] or len(rest) < 2:
+            return None
+        runner, rest = rest[1], rest[2:]
+    elif name in {"pytest", "py.test"}:
+        runner = "pytest"
+    else:
+        return None
+    if runner not in QUIET:
+        return None
+    if runner == "unittest" and rest[:1] == ["discover"]:
+        rest = rest[1:]
+        start, skip = ".", False
+        for index, word in enumerate(rest):
+            if skip:
+                skip = False
+            elif word in {"-s", "--start-directory"}:
+                start, skip = rest[index + 1] if index + 1 < len(rest) else ".", True
+            elif word in {"-t", "--top-level-directory"}:
+                skip = True
+            elif word in QUIET["unittest"]:
+                continue
+            else:
+                return None  # a pattern or anything else narrows the run
+        start = posixpath.normpath(start)
+        return runner, frozenset() if start == "." else frozenset({start})
+    tests, skip = set(), False
+    for word in rest:
+        if skip:
+            skip = False
+        elif word in QUIET[runner] or any(word.startswith(flag + "=") for flag in VALUED[runner]):
+            continue
+        elif word in VALUED[runner]:
+            skip = True
+        elif word.startswith("-"):
+            return None
+        else:
+            path = word
+            if runner == "unittest" and not word.endswith(".py") and "/" not in word:
+                # tests.test_contracts.TestX.test_y -> tests/test_contracts.py::TestX::test_y
+                parts = word.split(".")
+                module = next((i for i in range(len(parts), 0, -1)
+                               if parts[i - 1].startswith("test")), len(parts))  # fmt: skip
+                path = "/".join(parts[:module]) + ".py"
+                if parts[module:]:
+                    path += "::" + "::".join(parts[module:])
+            tests.add(
+                posixpath.normpath(path.split("::")[0])
+                + ("::" + path.split("::", 1)[1] if "::" in path else "")
+            )
+    return runner, frozenset(tests)
+
+
+def test_covers(check, skill):
+    """A check proves the skill's test if it ran the same tests or more with the same runner."""
+    if not check or not skill:
+        return False
+    if test_command(check) == test_command(skill):
+        return True
+    ran, needed = test_selection(check), test_selection(skill)
+    if not ran or not needed or ran[0] != needed[0]:
+        return False
+    if not ran[1]:
+        return True  # the whole suite
+    if not needed[1]:
+        return False
+
+    def within(test, scope):
+        return (
+            test == scope
+            or test.startswith(scope.rstrip("/") + "/")
+            or test.startswith(scope + "::")
+        )
+
+    return all(any(within(test, scope) for scope in ran[1]) for test in needed[1])
 
 
 DOC_SUFFIXES = (".md", ".rst", ".txt", ".adoc")
@@ -351,22 +460,29 @@ def added_words(arguments, capability):
 
 
 def line_changes(arguments, capability):
-    """Lines an edit or write added ("+line") or removed ("-line"), stripped; None if unknown."""
+    """Lines an edit or write added or removed, as "file<TAB>+line" / "file<TAB>-line"
+    (stripped); None when the content wasn't captured."""
+    path = normalized_path(arguments.get("file_path") or arguments.get("path")) or ""
     content = arguments.get("content")
     if "write" in capability and isinstance(content, str):
-        return {"+" + line.strip() for line in content.splitlines() if line.strip()}
+        return {f"{path}\t+{line.strip()}" for line in content.splitlines() if line.strip()}
     old, new = arguments.get("old_string"), arguments.get("new_string")
     if "edit" in capability and isinstance(old, str) and isinstance(new, str):
         before = {line.strip() for line in old.splitlines() if line.strip()}
         after = {line.strip() for line in new.splitlines() if line.strip()}
-        return {"+" + line for line in after - before} | {"-" + line for line in before - after}
+        return {f"{path}\t+{line}" for line in after - before} | {
+            f"{path}\t-{line}" for line in before - after
+        }
     patch = arguments.get("patch", arguments.get("input"))
     if "patch" in capability and isinstance(patch, str):
-        return {
-            line[0] + line[1:].strip()
-            for line in patch.splitlines()
-            if line[:1] in "+-" and not line.startswith(("+++", "---")) and line[1:].strip()
-        }
+        changes = set()
+        for line in patch.splitlines():
+            header = re.match(r"^(?:\*\*\* (?:Update|Add|Delete) File: |\+\+\+ (?:b/)?)(.+)$", line)
+            if header:
+                path = normalized_path(header[1]) or ""
+            elif line[:1] in "+-" and not line.startswith("---") and line[1:].strip():
+                changes.add(f"{path}\t{line[0]}{line[1:].strip()}")
+        return changes
     return None
 
 
@@ -379,7 +495,9 @@ def proven_edits(edits, unproven):
         item, withheld = dict(item), 0
         for name, sign in (("after", "+"), ("before", "-")):
             lines = item.get(name, "").splitlines()
-            kept = [line for line in lines if sign + line.strip() not in unproven]
+            kept = [
+                line for line in lines if f"{item['file']}\t{sign}{line.strip()}" not in unproven
+            ]
             if len(kept) < len(lines):
                 withheld += len(lines) - len(kept)
                 if name == "before":
@@ -395,6 +513,66 @@ def proven_edits(edits, unproven):
             item["unproven_lines_withheld"] = withheld
         result.append(item)
     return result
+
+
+def withhold_unproven(definition, unproven):
+    """A copy of a skill whose recorded changes lack the lines no check reproduced.
+
+    A shell command that changed files can't be compared line by line, so its text is
+    withheld too; the files it changed stay visible."""
+    steps = []
+    for step in definition["steps"]:
+        arguments = dict(step["arguments"])
+        if arguments.get(WORKSPACE_CHANGES) and isinstance(arguments.get("command"), str):
+            arguments["command"] = "[withheld: a command that changed files]"
+            steps.append({**step, "arguments": arguments})
+            continue
+        if not unproven:
+            steps.append(step)
+            continue
+        path = normalized_path(arguments.get("file_path") or arguments.get("path")) or ""
+
+        def keep(text, sign, path=path):
+            lines = text.splitlines()
+            kept = [line for line in lines if f"{path}\t{sign}{line.strip()}" not in unproven]
+            return "\n".join(kept), len(lines) - len(kept)
+
+        withheld = 0
+        if isinstance(arguments.get("content"), str) and "write" in step["capability"]:
+            arguments["content"], withheld = keep(arguments["content"], "+")
+        elif isinstance(arguments.get("new_string"), str) and "edit" in step["capability"]:
+            arguments["new_string"], withheld = keep(arguments["new_string"], "+")
+        elif "patch" in step["capability"]:
+            key = "patch" if isinstance(arguments.get("patch"), str) else "input"
+            if isinstance(arguments.get(key), str):
+                lines, current = [], ""
+                for line in arguments[key].splitlines():
+                    header = re.match(
+                        r"^(?:\*\*\* (?:Update|Add|Delete) File: |\+\+\+ (?:b/)?)(.+)$", line
+                    )
+                    if header:
+                        current = normalized_path(header[1]) or ""
+                    elif line[:1] in "+-" and not line.startswith("---"):
+                        if f"{current}\t{line[0]}{line[1:].strip()}" in unproven:
+                            withheld += 1
+                            if line[0] == "+":
+                                continue
+                            line = " " + line[1:]
+                    lines.append(line)
+                arguments[key] = "\n".join(lines)
+        step = {**step, "arguments": arguments}
+        if withheld:
+            step["unproven_lines_withheld"] = withheld
+        steps.append(step)
+    return {**definition, "steps": steps}
+
+
+def first_sentence(text):
+    """The opening sentence of a request: enough to name a skill, too little to carry an
+    instruction appended later in the same request."""
+    text = text.strip().split("\n", 1)[0]
+    match = re.match(r"(.+?[.!?])(?:\s|$)", text)
+    return (match[1] if match else text)[:200]
 
 
 def search_document(definition):

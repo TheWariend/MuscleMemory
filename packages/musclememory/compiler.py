@@ -4,7 +4,13 @@ import json
 import re
 from copy import deepcopy
 
-from .artifacts import WORKSPACE_CHANGES, command_parts, extract_experience, targets
+from .artifacts import (
+    WORKSPACE_CHANGES,
+    command_parts,
+    extract_experience,
+    first_sentence,
+    targets,
+)
 from .core import DomainError, ExecutionEvent, LearningPolicy, ProcedureDefinition, ProcedureStep
 from .security import MASK, redact
 
@@ -212,7 +218,7 @@ def compile_trace(
         "Completion evidence is caller-attested; structural validation is not task verification."
     )
     return ProcedureDefinition(
-        title=policy.title or intent[:200],
+        title=policy.title or first_sentence(intent),
         intent_signature=signature(intent),
         parameters={k: v.definition for k, v in policy.parameters.items()},
         preconditions=policy.preconditions,

@@ -137,11 +137,13 @@ def changed_files(event):
 
 
 def unproven_lines(session, tenant, revision, events_of):
-    """Lines the skill changed that no successful check changed too.
+    """Lines the skill changed that no successful check changed too, in the same file.
 
     A check repeats a skill's steps, but a step can carry one extra line the clean
-    checks never wrote. Such lines are withheld from what agents are shown. Empty when
-    no check's changes were captured, so nothing is withheld on guesswork.
+    checks never wrote. Such lines are withheld from what agents are shown. Empty for a
+    skill no check has passed yet (it is never served as validated). When checks passed
+    but none of their changes were captured (a shell command edited the files), every
+    changed line is withheld: nothing was seen to reproduce it.
     """
     from .artifacts import line_changes
 
@@ -151,7 +153,7 @@ def unproven_lines(session, tenant, revision, events_of):
             wanted |= line_changes(step["arguments"], step["capability"]) or set()
     if not wanted:
         return []
-    proven, known = set(), False
+    proven, known, checked = set(), False, False
     evaluations = session.scalars(
         select(Evaluation)
         .where(
@@ -165,13 +167,16 @@ def unproven_lines(session, tenant, revision, events_of):
     for evaluation in evaluations:
         if not (evaluation.outcome or {}).get("succeeded"):
             continue
+        checked = True
         for event in events_of(evaluation.run_token):
             if event.kind == "tool" and changed_files(event):
                 lines = line_changes(event.arguments, event.capability)
                 if lines is not None:
                     known = True
                     proven |= lines
-    return sorted(wanted - proven) if known else []
+    if not checked:
+        return []
+    return sorted(wanted - proven) if known else sorted(wanted)
 
 
 class MemoryService:
@@ -872,6 +877,7 @@ class MemoryService:
                     operation_categories,
                     targets,
                     test_command,
+                    test_covers,
                 )
 
                 last_change = max(
@@ -923,11 +929,17 @@ class MemoryService:
                             event
                             for event in matches
                             if stored_test
-                            and test_command(event.arguments.get("command")) == stored_test
+                            # The same tests or more, however the agent spelled the command.
+                            and test_covers(event.arguments.get("command"), command)
                             and event.event_id in request.outcome_report.evidence_event_ids
                             and event.sequence >= last_change
                         ]
-                    if not matches and step["capability"] in FILE_CHANGE:
+                    # A shell command that changed files is a file change too: a later
+                    # session may make the same change with an editor instead.
+                    changes_files = step["capability"] in FILE_CHANGE or bool(
+                        step["arguments"].get(WORKSPACE_CHANGES)
+                    )
+                    if not matches and changes_files:
                         # Another agent's tool: the same files changed is the same step.
                         wanted = set(
                             targets(step["arguments"], step["effect"], step["capability"])[1]
@@ -939,7 +951,7 @@ class MemoryService:
                             and (changed := changed_files(event))
                             and (not wanted or wanted & changed)
                         ]
-                    if matches and step["capability"] in FILE_CHANGE:
+                    if matches and changes_files:
                         # The same file is not the same change: a step that added code
                         # needs a check that added mostly the same code to that file.
                         wanted = added_words(step["arguments"], step["capability"])
