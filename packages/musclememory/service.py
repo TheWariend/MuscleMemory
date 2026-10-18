@@ -784,10 +784,19 @@ class MemoryService:
                 )
             events = self._events(session, run)
             if request.outcome_report.succeeded:
+                from .artifacts import inspection_only, operation_categories
+
+                # Only steps that act are required; reading or searching differently is fine.
                 required = {
                     step["capability"]
                     for step in revision.definition["steps"]
                     if not step.get("condition")
+                    and not inspection_only(step["arguments"], step["capability"])
+                    and (
+                        step["effect"] != "read"
+                        or step.get("critical")
+                        or "verify" in operation_categories(step["arguments"], step["capability"])
+                    )
                 }
                 executed = {
                     e.capability
@@ -804,6 +813,7 @@ class MemoryService:
                     )
                 from .artifacts import (
                     WORKSPACE_CHANGES,
+                    added_words,
                     documentation_only,
                     inspection_only,
                     operation_categories,
@@ -876,6 +886,24 @@ class MemoryService:
                             and (changed := changed_files(event))
                             and (not wanted or wanted & changed)
                         ]
+                    if matches and step["capability"] in FILE_CHANGE:
+                        # The same file is not the same change: a step that added code
+                        # needs a check that added mostly the same code to that file.
+                        wanted = added_words(step["arguments"], step["capability"])
+                        files = set(
+                            targets(step["arguments"], step["effect"], step["capability"])[1]
+                        )
+                        added, known = set(), False
+                        for event in events:
+                            changed = changed_files(event) if event.kind == "tool" else set()
+                            if not changed or not ("*" in changed or not files or files & changed):
+                                continue
+                            words = added_words(event.arguments, event.capability)
+                            if words is not None:
+                                known = True
+                                added |= words
+                        if wanted and known and len(wanted & added) * 2 < len(wanted):
+                            matches = []
                     if not matches:
                         raise DomainError(
                             "application_evidence",

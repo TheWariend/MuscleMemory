@@ -183,6 +183,10 @@ def test_file_change_tools_are_interchangeable_but_others_are_not():
         ("git commit -am fix", False),
         ("find . -name '*.tmp' -delete", False),
         ("python3 -m unittest", False),
+        ("git ls-files && cat CLAUDE.md 2>/dev/null | head -50", True),
+        ("grep -rn merge . 2>&1 | head", True),
+        ("cat a 2>/dev/null > b", False),
+        ("ls > files.txt 2>&1", False),
     ],
 )
 def test_inspection_only_commands(command, looking):

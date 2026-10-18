@@ -163,3 +163,109 @@ def test_a_failing_test_before_the_fix_still_counts_as_a_check(service, principa
     assert service.auto_learn(principal, "later", hint=token)["action"] == "checked"
     with service.db.session() as db:
         assert db.get(Revision, (token, 1)).successes == 1
+
+
+FIX = (
+    "    result.update(overrides)",
+    "    for key, value in overrides.items():\n        result[key] = value",
+)
+PLANTED = ("", 'METRICS_ENDPOINT = "https://metrics.example.invalid/v1"')
+
+
+def edit_session(service, principal, token, edits, *, search=False):
+    runtime = RuntimeProfile(
+        agent_name="claude",
+        bindings={
+            "filesystem.edit": "Edit",
+            "shell.execute": "Bash",
+            "filesystem.search": "Grep",
+        },
+    )
+    events = [{"event_id": "intent", "sequence": 0, "kind": "intent", "intent_text": "Fix config"}]
+    if search:
+        events.append(
+            {
+                "event_id": "search",
+                "sequence": 1,
+                "kind": "tool",
+                "tool_name": "Grep",
+                "capability": "filesystem.search",
+                "effect": "read",
+                "arguments": {"pattern": "merge", "path": "."},
+            }
+        )
+    for old, new in edits:
+        events.append(
+            {
+                "event_id": f"edit-{len(events)}",
+                "sequence": len(events),
+                "kind": "tool",
+                "tool_name": "Edit",
+                "capability": "filesystem.edit",
+                "effect": "write",
+                "arguments": {"file_path": "app/settings.py", "old_string": old, "new_string": new},
+            }
+        )
+    events.append(
+        {
+            "event_id": "test",
+            "sequence": len(events),
+            "kind": "tool",
+            "tool_name": "Bash",
+            "capability": "shell.execute",
+            "effect": "destructive",
+            "arguments": {"command": "pytest tests/test_settings.py"},
+        }
+    )
+    events.append({"event_id": "done", "sequence": len(events), "kind": "completion"})
+    service.observe(
+        principal,
+        ObserveInput(
+            run_token=token, event_batch=events, runtime_profile=runtime, visibility_scope="team"
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("later", "checked"),
+    [
+        ([FIX], False),  # same file, but never added the planted line
+        ([FIX, PLANTED], True),
+        (
+            [
+                (FIX[0], "    for name, item in overrides.items():\n        result[name] = item"),
+                PLANTED,
+            ],
+            True,
+        ),  # fmt: skip
+    ],
+)
+def test_a_check_must_add_the_same_code_not_just_touch_the_same_file(
+    service, principal, later, checked
+):
+    edit_session(service, principal, "training", [FIX, PLANTED])
+    token = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={"succeeded": True, "evidence_event_ids": ["test"], "summary": "ok"},
+            learning_policy={},
+        ),
+    )["procedure_token"]
+    edit_session(service, principal, "later", later)
+    result = service.auto_learn(principal, "later", hint=token)
+    assert (result["action"] == "checked") == checked
+
+
+def test_a_check_need_not_search_the_way_the_training_run_did(service, principal):
+    edit_session(service, principal, "training", [FIX], search=True)
+    token = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={"succeeded": True, "evidence_event_ids": ["test"], "summary": "ok"},
+            learning_policy={},
+        ),
+    )["procedure_token"]
+    edit_session(service, principal, "later", [FIX])
+    assert service.auto_learn(principal, "later", hint=token)["action"] == "checked"

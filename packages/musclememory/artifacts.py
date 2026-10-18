@@ -109,7 +109,11 @@ def inspection_only(arguments, capability=""):
     command = arguments.get("command")
     if not str(capability).startswith("shell.") or arguments.get(WORKSPACE_CHANGES):
         return False
-    if not isinstance(command, str) or any(char in command for char in ">`$<"):
+    if not isinstance(command, str):
+        return False
+    # Discarding or merging output writes nothing; any other redirect may.
+    command = re.sub(r"\d*>\s*/dev/null|\d*>&\d+", " ", command)
+    if any(char in command for char in ">`$<"):
         return False
     pieces = [piece for piece in re.split(r"&&|\|\||;|\||\n", command) if piece.strip()]
     for piece in pieces:
@@ -325,6 +329,25 @@ def patch_edits(arguments, capability):
     flush()
     # Identical hunks can appear twice in a recorded retry; preserve one reference.
     return [dict(item) for item in {repr(item): item for item in result}.values()][:16]
+
+
+IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+
+
+def added_words(arguments, capability):
+    """Identifiers an edit or write added, or None when its content wasn't captured."""
+    content = arguments.get("content")
+    if "write" in capability and isinstance(content, str):
+        return set(IDENTIFIER.findall(content))
+    edits = patch_edits(arguments, capability)
+    if not edits:
+        return None
+    return {
+        word
+        for item in edits
+        for word in set(IDENTIFIER.findall(item.get("after", "")))
+        - set(IDENTIFIER.findall(item.get("before", "")))
+    }
 
 
 def search_document(definition):
