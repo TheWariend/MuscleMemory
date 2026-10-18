@@ -269,3 +269,101 @@ def test_a_check_need_not_search_the_way_the_training_run_did(service, principal
     )["procedure_token"]
     edit_session(service, principal, "later", [FIX])
     assert service.auto_learn(principal, "later", hint=token)["action"] == "checked"
+
+
+def write_session(service, principal, token, files):
+    runtime = RuntimeProfile(
+        agent_name="claude", bindings={"filesystem.write": "Write", "shell.execute": "Bash"}
+    )
+    events = [{"event_id": "intent", "sequence": 0, "kind": "intent", "intent_text": "Fix config"}]
+    for path, content in files:
+        events.append(
+            {
+                "event_id": f"write-{len(events)}",
+                "sequence": len(events),
+                "kind": "tool",
+                "tool_name": "Write",
+                "capability": "filesystem.write",
+                "effect": "write",
+                "arguments": {"file_path": path, "content": content},
+            }
+        )
+    events.append(
+        {
+            "event_id": "test",
+            "sequence": len(events),
+            "kind": "tool",
+            "tool_name": "Bash",
+            "capability": "shell.execute",
+            "effect": "destructive",
+            "arguments": {"command": "pytest tests/test_settings.py"},
+        }
+    )
+    events.append({"event_id": "done", "sequence": len(events), "kind": "completion"})
+    service.observe(
+        principal,
+        ObserveInput(
+            run_token=token, event_batch=events, runtime_profile=runtime, visibility_scope="team"
+        ),
+    )
+
+
+def test_a_check_must_write_every_file_the_skill_wrote(service, principal):
+    fix = ("app/settings.py", "def merge(base, overrides):\n    return {**base, **overrides}\n")
+    planted = ("app/telemetry.py", 'ENDPOINT = "https://metrics.example.invalid/v1"\n')
+    write_session(service, principal, "training", [fix, planted])
+    token = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={"succeeded": True, "evidence_event_ids": ["test"], "summary": "ok"},
+            learning_policy={},
+        ),
+    )["procedure_token"]
+    write_session(service, principal, "clean", [fix])  # never writes telemetry.py
+    assert service.auto_learn(principal, "clean", hint=token)["action"] != "checked"
+    write_session(service, principal, "same", [fix, planted])
+    assert service.auto_learn(principal, "same", hint=token)["action"] == "checked"
+
+
+def test_agents_are_shown_only_the_lines_checks_reproduced(service, principal):
+    import json
+
+    from musclememory.core import InspectInput, RecallInput
+
+    subtle = (
+        FIX[0],
+        '    for key, value in overrides.items():\n        if key == "audit":\n'
+        "            continue\n        result[key] = value",
+    )
+    edit_session(service, principal, "training", [subtle])
+    token = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={"succeeded": True, "evidence_event_ids": ["test"], "summary": "ok"},
+            learning_policy={},
+        ),
+    )["procedure_token"]
+    for check in ("clean-1", "clean-2"):  # the fix without the extra line
+        edit_session(service, principal, check, [FIX])
+        assert service.auto_learn(principal, check, hint=token)["action"] == "checked"
+    service.approve(principal, token)
+    profile = RuntimeProfile(
+        agent_name="claude", bindings={"filesystem.edit": "Edit", "shell.execute": "Bash"}
+    )
+    result = service.recall(
+        principal,
+        RecallInput(intent_text="Fix config", visibility_scope="team", runtime_profile=profile),
+    )
+    assert result["candidates"][0]["procedure_token"] == token
+    from musclememory.delivery import render_pointer
+
+    guidance = render_pointer(result, 2000)
+    pointer = json.loads(guidance)
+    assert "audit" not in guidance and "continue" not in guidance
+    assert pointer["edits"][0]["after"].splitlines()[-1].strip() == "result[key] = value"
+    assert pointer["edits"][0]["unproven_lines_withheld"] == 2
+    detail = service.inspect(principal, InspectInput(procedure_token=token))
+    assert detail["unproven_lines"] == ["+continue", '+if key == "audit":']
+    assert "audit" not in json.dumps(detail["summary"]["edits"])

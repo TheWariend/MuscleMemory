@@ -136,6 +136,44 @@ def changed_files(event):
     return set()
 
 
+def unproven_lines(session, tenant, revision, events_of):
+    """Lines the skill changed that no successful check changed too.
+
+    A check repeats a skill's steps, but a step can carry one extra line the clean
+    checks never wrote. Such lines are withheld from what agents are shown. Empty when
+    no check's changes were captured, so nothing is withheld on guesswork.
+    """
+    from .artifacts import line_changes
+
+    wanted = set()
+    for step in revision.definition["steps"]:
+        if step["capability"] in FILE_CHANGE:
+            wanted |= line_changes(step["arguments"], step["capability"]) or set()
+    if not wanted:
+        return []
+    proven, known = set(), False
+    evaluations = session.scalars(
+        select(Evaluation)
+        .where(
+            Evaluation.tenant == tenant,
+            Evaluation.procedure_token == revision.procedure_token,
+            Evaluation.version == revision.version,
+        )
+        .order_by(Evaluation.created_at.desc())
+        .limit(20)
+    ).all()
+    for evaluation in evaluations:
+        if not (evaluation.outcome or {}).get("succeeded"):
+            continue
+        for event in events_of(evaluation.run_token):
+            if event.kind == "tool" and changed_files(event):
+                lines = line_changes(event.arguments, event.capability)
+                if lines is not None:
+                    known = True
+                    proven |= lines
+    return sorted(wanted - proven) if known else []
+
+
 class MemoryService:
     def __init__(self, settings: Settings, database=None, embeddings=None):
         self.settings = settings
@@ -222,6 +260,13 @@ class MemoryService:
         if run.expires_at <= utcnow():
             raise DomainError("expired_trace", "Execution trace retention has expired", 410)
         return run
+
+    def _run_events(self, session, principal):
+        def events_of(run_token):
+            run = session.get(Run, (principal.tenant, run_token))
+            return self._events(session, run) if run else []
+
+        return events_of
 
     @staticmethod
     def _events(session, run):
@@ -702,6 +747,14 @@ class MemoryService:
                 request.runtime_profile,
                 self.settings,
             )
+            for candidate in [*ranked, *requested]:
+                if "unproven_lines" not in candidate:
+                    revision = session.get(
+                        Revision, (candidate["procedure_token"], candidate["procedure_version"])
+                    )
+                    candidate["unproven_lines"] = unproven_lines(
+                        session, principal.tenant, revision, self._run_events(session, principal)
+                    )
             self.audit(
                 session,
                 principal,
@@ -893,16 +946,20 @@ class MemoryService:
                         files = set(
                             targets(step["arguments"], step["effect"], step["capability"])[1]
                         )
-                        added, known = set(), False
+                        added, known, touched = set(), False, False
                         for event in events:
                             changed = changed_files(event) if event.kind == "tool" else set()
                             if not changed or not ("*" in changed or not files or files & changed):
                                 continue
+                            touched = True
                             words = added_words(event.arguments, event.capability)
                             if words is not None:
                                 known = True
                                 added |= words
-                        if wanted and known and len(wanted & added) * 2 < len(wanted):
+                        # A file the check never changed is a step it never repeated.
+                        if files and not touched:
+                            matches = []
+                        elif wanted and known and len(wanted & added) * 2 < len(wanted):
                             matches = []
                     if not matches:
                         raise DomainError(
@@ -1041,6 +1098,9 @@ class MemoryService:
                 .order_by(Contrast.created_at.desc())
                 .limit(100)
             ).all()
+            unproven = unproven_lines(
+                session, principal.tenant, revision, self._run_events(session, principal)
+            )
             self.audit(
                 session, principal, procedure.namespace, "inspect", procedure.procedure_token
             )
@@ -1080,7 +1140,8 @@ class MemoryService:
                     }
                     for item in contrasts
                 ],
-                "summary": self._summary(session, principal, revision, evaluations),
+                "unproven_lines": unproven,
+                "summary": self._summary(session, principal, revision, evaluations, unproven),
                 "successes": revision.successes,
                 "failures": revision.failures,
                 "confidence": reliability(revision),
@@ -1089,9 +1150,9 @@ class MemoryService:
                 "contract_version": "1",
             }
 
-    def _summary(self, session, principal, revision, evaluations):
+    def _summary(self, session, principal, revision, evaluations, unproven=()):
         """What a person needs to read a skill: files, edits, the test and who proved it."""
-        from .artifacts import extract_experience, inspection_only, test_command
+        from .artifacts import extract_experience, inspection_only, proven_edits, test_command
 
         experience = extract_experience(revision.definition["steps"])
         changed = set(experience["writes"])
@@ -1117,7 +1178,7 @@ class MemoryService:
             "request": source.intent if source else None,
             "reads": [path for path in experience["reads"] if path not in changed][:12],
             "changes": experience["writes"][:12],
-            "edits": experience["edits"][:6],
+            "edits": proven_edits(experience["edits"], set(unproven))[:6],
             "test": next((test for test in reversed(tests) if test), None),
             "look_around_steps": sum(
                 inspection_only(step["arguments"], step["capability"])

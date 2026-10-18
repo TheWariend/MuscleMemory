@@ -350,6 +350,53 @@ def added_words(arguments, capability):
     }
 
 
+def line_changes(arguments, capability):
+    """Lines an edit or write added ("+line") or removed ("-line"), stripped; None if unknown."""
+    content = arguments.get("content")
+    if "write" in capability and isinstance(content, str):
+        return {"+" + line.strip() for line in content.splitlines() if line.strip()}
+    old, new = arguments.get("old_string"), arguments.get("new_string")
+    if "edit" in capability and isinstance(old, str) and isinstance(new, str):
+        before = {line.strip() for line in old.splitlines() if line.strip()}
+        after = {line.strip() for line in new.splitlines() if line.strip()}
+        return {"+" + line for line in after - before} | {"-" + line for line in before - after}
+    patch = arguments.get("patch", arguments.get("input"))
+    if "patch" in capability and isinstance(patch, str):
+        return {
+            line[0] + line[1:].strip()
+            for line in patch.splitlines()
+            if line[:1] in "+-" and not line.startswith(("+++", "---")) and line[1:].strip()
+        }
+    return None
+
+
+def proven_edits(edits, unproven):
+    """Edits without the lines no independent check reproduced; says how many were withheld."""
+    if not unproven:
+        return edits
+    result = []
+    for item in edits:
+        item, withheld = dict(item), 0
+        for name, sign in (("after", "+"), ("before", "-")):
+            lines = item.get(name, "").splitlines()
+            kept = [line for line in lines if sign + line.strip() not in unproven]
+            if len(kept) < len(lines):
+                withheld += len(lines) - len(kept)
+                if name == "before":
+                    # An unproven removal: don't show it as something to take out.
+                    kept = []
+                if kept:
+                    item[name] = "\n".join(kept)
+                else:
+                    item.pop(name, None)
+        if withheld:
+            if not ({"before", "after"} & set(item)):
+                continue
+            item["unproven_lines_withheld"] = withheld
+        result.append(item)
+    return result
+
+
 def search_document(definition):
     experience = definition.get("experience") or extract_experience(definition["steps"])
     browser_labels = []

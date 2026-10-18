@@ -36,7 +36,7 @@ def render_pointer(result, budget=350):
         return ""
     candidate = result["candidates"][0]
     definition = candidate["definition"]
-    from .artifacts import extract_experience
+    from .artifacts import extract_experience, proven_edits
 
     # Derive from immutable step arguments so older revisions get the same renderer.
     experience = extract_experience(definition["steps"])
@@ -47,7 +47,8 @@ def render_pointer(result, budget=350):
         "title": definition["title"][:160],
         "changed_files": experience["writes"][:6],
         "verify": experience["verification_commands"][-1:],
-        "edits": experience["edits"][:4],
+        # Lines no independent check reproduced are withheld, not handed on.
+        "edits": proven_edits(experience["edits"], set(candidate.get("unproven_lines", [])))[:4],
         "requires_files": experience["inputs"][:4],
         "preconditions": definition.get("preconditions", [])[:2],
         "avoid": definition.get("avoidance_rules", [])[:1],
@@ -94,7 +95,7 @@ def render_pointer(result, budget=350):
         with_before = next((item for item in reversed(pointer["edits"]) if "before" in item), None)
         if with_before:
             del with_before["before"]
-            if set(with_before) == {"file"}:
+            if not {"before", "after"} & set(with_before):
                 pointer["edits"].remove(with_before)
         else:
             pointer["edits"].pop()
