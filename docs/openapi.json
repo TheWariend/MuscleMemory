@@ -3,7 +3,7 @@
   "info": {
     "title": "MuscleMemory by TheWariend",
     "description": "Your AI agents learn by doing. REST contract v1.",
-    "version": "0.1.4"
+    "version": "0.1.5"
   },
   "paths": {
     "/health": {
