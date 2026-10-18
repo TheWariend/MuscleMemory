@@ -30,3 +30,6 @@ packages/sdk-typescript/NOTICE
 
 # Private runtime state for resumable browser evaluations
 benchmarks/results/browser-agent-*/**/.runtime/
+
+# Local agent settings (machine-specific hook paths)
+.claude/
