@@ -15,6 +15,10 @@ WORKSPACE_CHANGES = "$mm_workspace_changes"
 PATH_KEYS = {"path", "file_path", "filename", "file", "target", "output_path"}
 READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc"}
 # Programs that only run tests, and tools that run tests with one of these subcommands.
+# Deliberately left out: type checks and builds (tsc, mypy, npm run build), linters, and
+# scripts only named like checks (contract-check.mjs). A skill is only as good as the test
+# that proved it. See docs/how-it-works.md, "What counts as a test", before widening this;
+# verification.ts in the TypeScript SDK must change with it.
 TEST_RUNNERS = {
     "pytest", "py.test", "jest", "vitest", "mocha", "ava", "tox", "nox", "rspec", "phpunit",
     "runtests.py", "ctest",

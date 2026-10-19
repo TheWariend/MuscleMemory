@@ -64,6 +64,35 @@ flowchart LR
    revision at most once and at most two pointers in total. When nothing fits or
    the files no longer match, MuscleMemory adds nothing.
 
+## What counts as a test
+
+A skill is only as trustworthy as the test that proved it, so a command counts as
+a test only when it runs tests. Being named or described as a check is not enough.
+
+Counts:
+
+- Test runners: `pytest`, `jest`, `vitest`, `mocha`, `rspec`, `phpunit` and similar.
+- Test subcommands: `cargo test`, `go test`, `npm test`, `npm run test:*`,
+  `make test`/`check`, `mvn test`, `gradle test`, `dotnet test` and similar.
+- Node's test runner: `node --test`.
+- A test file run directly, named the way test runners name them:
+  `test_*.py`, `*_test.py`, `*.test.js`, `*.spec.ts` (any JS or TS extension).
+
+Does not count:
+
+- Type checks and builds: `tsc`, `npm run typecheck`, `npm run build`, `mypy`,
+  `cargo check`. They prove the code compiles, not that it works.
+- Linters: `ruff check`, `eslint`.
+- Scripts whose names only suggest checking, such as `contract-check.mjs` or
+  `verify.sh`. Many scripts with those names change things or test nothing. Wrap
+  them in an `npm run test:*` script, or name them as test files, to count.
+- Commands that only mention tests: `echo test`, `cat tests/test_x.py`.
+
+When a project's only checks are type checks, its sessions are not learned from.
+Add a test script instead of widening this rule. A change to this rule must change
+`artifacts.py` and the TypeScript SDK's `verification.ts` together, with cases
+added to both test suites for commands that must and must not count.
+
 ## Workspace scope
 
 Skills are grouped by tenant and workspace (`namespace`), rather than repository.

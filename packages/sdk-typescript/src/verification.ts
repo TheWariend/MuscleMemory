@@ -5,6 +5,10 @@ import type {ExecutionEvent} from './contracts.js';
 export const WORKSPACE_CHANGES = '$mm_workspace_changes';
 
 // Programs that only run tests, and tools that run tests with one of these subcommands.
+// Deliberately left out: type checks and builds (tsc, mypy, npm run build), linters, and
+// scripts only named like checks (contract-check.mjs). A skill is only as good as the test
+// that proved it. See docs/how-it-works.md, "What counts as a test", before widening this;
+// artifacts.py in the Python package must change with it.
 const TEST_RUNNERS = new Set(['pytest', 'py.test', 'jest', 'vitest', 'mocha', 'ava', 'tox', 'nox', 'rspec',
   'phpunit', 'runtests.py', 'ctest']);
 const TEST_SUBCOMMANDS: Record<string, string[]> = {
