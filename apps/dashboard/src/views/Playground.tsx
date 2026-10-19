@@ -1,7 +1,7 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import type {RecallResult, RunSummary} from '../api';
 import {ProviderLogo, providerOf} from '../logos';
-import {shortTitle} from '../plain';
+import {shortTitle, skillName} from '../plain';
 import {useSkillDetails} from '../skillData';
 import {Empty, Icon, Logo, NoteText} from '../ui';
 import {useWorkspace} from '../workspace';
@@ -62,7 +62,7 @@ export function Playground() {
 
   const agent = providerOf(runs?.[0]?.agent_name);
   // Show skills by the request they were learned from, like the Skills page.
-  const titles = new Map((procedures ?? []).filter(p => p.learned_from).map(p => [p.procedure_token, p.learned_from!]));
+  const titles = new Map((procedures ?? []).map(p => [p.procedure_token, skillName(p)]));
   return <section className="card chat">
     <div className="chat-log">
       {!turns.length && <div className="chat-intro">
@@ -104,7 +104,7 @@ function Answer({task, result, onOpen, titles}: {task: string; result: RecallRes
   try {pointer = JSON.parse(result.guidance ?? '{}');} catch {/* show the summary only */}
   const total = match.successes + match.failures;
   return <div className="answer">
-    <p>Your agent would get a skill that worked <strong>{match.successes} of {total}</strong> times: <button type="button" className="link-button inline" onClick={() => onOpen(match.procedure_token)}>{shortTitle(titles.get(match.procedure_token) || match.definition.title)}</button></p>
+    <p>Your agent would get a skill that worked <strong>{match.successes} of {total}</strong> times: <button type="button" className="link-button inline" onClick={() => onOpen(match.procedure_token)}>{titles.get(match.procedure_token) || shortTitle(match.definition.title)}</button></p>
     <p className="muted">It would be added to your agent’s prompt like this:</p>
     <ul className="hand-off">
       {pointer.changed_files?.length ? <li><span>Files to change</span>{pointer.changed_files.join(', ')}</li> : null}

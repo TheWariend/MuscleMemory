@@ -413,6 +413,31 @@ def extract_experience(steps):
     }
 
 
+def skill_name(experience):
+    """A plain name from what the skill did: "Change a.py and b.ts, checked by test_a.py".
+
+    Only for showing a skill to people. Search keeps using the learned title and task.
+    """
+    files = [*dict.fromkeys(posixpath.basename(path) for path in experience["writes"])]
+    if not files:
+        return None
+    if len(files) > 3:
+        files = [*files[:2], f"{len(files) - 2} more files"]
+    name = "Change " + ", ".join(files[:-1]) + (" and " if len(files) > 1 else "") + files[-1]
+    commands = experience["verification_commands"]
+    command = (test_command(commands[-1]) or commands[-1]) if commands else ""
+    words = [w for w in runner_words(command_parts(command)) if not w.startswith("-")]
+    if words and re.fullmatch(r"python[\d.]*", posixpath.basename(words[0])):
+        words = words[1:]  # python -m pytest -> pytest
+    names = [posixpath.basename(word) for word in words]
+    # The test file it ran says most; otherwise the runner, as in "npm run test:contracts".
+    runner = [name for name, word in zip(names, words, strict=True) if "/" not in word]
+    test = next(
+        (n for n in names if TEST_FILE.fullmatch(n)), " ".join((names[:1] + runner[1:])[:3])
+    )
+    return (f"{name}, checked by {test}" if test else name)[:200]
+
+
 def edit_item(path, before, after):
     """One change: lines that stayed the same at either end are not part of it."""
     while before and after and before[0] == after[0]:

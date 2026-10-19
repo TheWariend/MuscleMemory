@@ -132,3 +132,55 @@ def test_evaluation_idempotence_and_no_savings_without_baseline(service, princip
     )
     assert service.evaluate(principal, request) == outcome
     assert service.usage(principal, "team")["evaluations"] == 1
+
+
+def test_skills_are_named_after_their_files_and_test(http):
+    profile = {
+        "agent_name": "claude",
+        "bindings": {"filesystem.edit": "Edit", "shell.execute": "Bash"},
+    }
+    common = {"runtime_profile": profile, "visibility_scope": "team"}
+    events = [
+        {"event_id": "intent", "sequence": 0, "kind": "intent", "intent_text": "wat is wrong"},
+        {
+            "event_id": "edit",
+            "sequence": 1,
+            "kind": "tool",
+            "tool_name": "Edit",
+            "capability": "filesystem.edit",
+            "effect": "write",
+            "arguments": {"file_path": "app/rounding.py", "old_string": "a", "new_string": "b"},
+        },
+        {
+            "event_id": "test",
+            "sequence": 2,
+            "kind": "tool",
+            "tool_name": "Bash",
+            "capability": "shell.execute",
+            "effect": "destructive",
+            "arguments": {"command": ".venv/bin/python -m pytest tests/test_rounding.py -q"},
+        },
+        {"event_id": "done", "sequence": 3, "kind": "completion"},
+    ]
+    http.post("/v1/runs", json={**common, "run_token": "named", "intent_text": "wat is wrong"})
+    http.post("/v1/observe", json={**common, "run_token": "named", "event_batch": events})
+    response = http.post(
+        "/v1/learn",
+        json={
+            "run_token": "named",
+            "completion_proof": {
+                "succeeded": True,
+                "evidence_event_ids": ["test"],
+                "summary": "Tests passed",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    procedure = response.json()["procedure_token"]
+
+    listed = http.get("/v1/procedures", params={"visibility_scope": "team"}).json()["items"]
+    detail = http.get(f"/v1/procedures/{procedure}").json()
+    built = "Change rounding.py, checked by test_rounding.py"
+    assert listed[0]["name"] == detail["name"] == built
+    # The request still reads as the title the skill was learned and searched with.
+    assert detail["definition"]["title"] == "wat is wrong"

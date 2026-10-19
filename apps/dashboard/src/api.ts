@@ -5,6 +5,8 @@ export type ProcedureSummary = {
   successes?: number; failures?: number; confidence?: number; updated_at?: string;
   needs_review?: boolean; auto_learned?: boolean;
   learned_from?: string; changes?: string[]; check?: string[];
+  /** A name built from the files it changed and the test that checks it. */
+  name?: string;
 };
 export type RunSummary = {run_token: string; intent_text: string; status: string; agent_name?: string | null; created_at?: string};
 export type Usage = {
@@ -30,6 +32,7 @@ export type Definition = {
 export type Measurements = {tool_calls: number; duration_ms: number; tokens?: number | null; cost_usd?: number | null};
 export type ProcedureDetail = {
   procedure_token: string; procedure_version: number; visibility_scope: string; lifecycle_status: string; needs_review?: boolean;
+  name?: string;
   definition: Definition; created_at: string; updated_at: string;
   version_history: Array<{version: number; status: string; successes: number; failures: number}>;
   validation_history: Array<{run_token: string; outcome: {succeeded?: boolean}; metrics: {observed?: Measurements; baseline?: Measurements | null}}>;

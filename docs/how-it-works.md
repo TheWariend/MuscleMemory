@@ -113,10 +113,17 @@ establish that a skill is appropriate for another repository.
 
 ## What a skill stores
 
+- **Title**: the first sentence of the request it was learned from, unless the
+  caller set `learning_policy.title`. Search and the agent's pointer use it, and it
+  never changes. The dashboard shows a **name** built from the skill instead, such
+  as "Change rounding.py, checked by test_rounding.py": the files it changed and
+  the test file it ran, or the test command. Names make no model calls, are not
+  stored, and recall never uses them; the request is shown under them.
 - **Steps** compiled from the successful session, with dead ends and failed
   branches removed. Steps keep their dependency graph.
 - **Files read and files changed**, the commands run, and the **test command**
-  that proved the result.
+  that proved the result. The program a command runs (`.venv/bin/python`) and
+  folders given to `ls` or `find` are not files read.
 - **Applicability conditions**: the capabilities, permissions and environment
   values it needs. Recall skips a skill when any condition is unknown or unmet.
 - **Watch-out and recovery notes**, written in plain English from failed steps,

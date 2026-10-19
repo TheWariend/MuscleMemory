@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {ProcedureDetail, ProcedureSummary, SkillSummary} from '../api';
-import {agentName, checksLine, describeStep, requestDetails, shortCommand, shortTitle, skillStatus} from '../plain';
+import {agentName, checksLine, describeStep, requestDetails, shortCommand, shortTitle, skillName, skillStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, NoteText, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {ProviderLogo} from '../logos';
 import {useWorkspace} from '../workspace';
@@ -17,7 +17,7 @@ export function Skills({selected}: {selected?: string}) {
   const count = (f: Filter) => list.filter(p => matches(p, f)).length;
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return list.filter(p => matches(p, filter) && (!q || (p.title ?? '').toLowerCase().includes(q)));
+    return list.filter(p => matches(p, filter) && (!q || [p.name, p.learned_from, p.title].some(t => t?.toLowerCase().includes(q))));
   }, [list, filter, query]);
   const filters = (Object.keys(filterLabels) as Filter[]).filter(f => f === 'all' || count(f) > 0);
 
@@ -43,11 +43,13 @@ export function SkillRow({p, compact}: {p: ProcedureSummary; compact?: boolean})
   const status = skillStatus(p.status, p.successes, p.needs_review);
   const files = (p.changes ?? []).map(f => f.split('/').slice(-2).join('/'));
   const task = p.learned_from?.trim();
+  // Under the built name, the request it came from is the description.
+  const desc = p.name ? clip(task || p.title || '') : requestDetails(task);
   return <button type="button" className="row skill-row" onClick={() => navigate({view: 'skills', id: p.procedure_token})}>
     <span className="row-icon"><Icon name="procedures" size={15}/></span>
     <span className="row-main">
-      <span className="row-title" title={task || p.title}>{shortTitle(task || p.title)}</span>
-      {!compact && requestDetails(task) && <span className="skill-desc">{requestDetails(task)}</span>}
+      <span className="row-title" title={task || p.title}>{skillName(p)}</span>
+      {!compact && desc && <span className="skill-desc">{desc}</span>}
       {!compact && <span className="skill-does">
         {files.length > 0 && <span><span className="skill-label">Changes</span>{files.join(', ')}</span>}
         {p.check?.[0] && <span><span className="skill-label">Checks with</span><code>{shortCommand(p.check[0])}</code></span>}
@@ -89,7 +91,7 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     finally {setBusy(false);}
   }
   async function turnOff() {
-    if (!detail || !await confirm({title: 'Turn off this skill?', confirm: 'Turn off', body: <p>Agents will stop getting “{detail.definition.title}”. Its history is kept.</p>})) return;
+    if (!detail || !await confirm({title: 'Turn off this skill?', confirm: 'Turn off', body: <p>Agents will stop getting “{title}”. Its history is kept.</p>})) return;
     setBusy(true);
     try {await client.retire(detail.procedure_token); toast('Skill turned off'); setDetail({...detail, lifecycle_status: 'retired'}); reload();}
     catch (e) {toast((e as Error).message, 'bad');}
@@ -106,19 +108,21 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     finally {setBusy(false);}
   }
   async function remove() {
-    if (!detail || !await confirm({title: 'Delete this skill?', confirm: 'Delete', danger: true, body: <p>“{detail.definition.title}” and its history will be removed. This can’t be undone.</p>})) return;
+    if (!detail || !await confirm({title: 'Delete this skill?', confirm: 'Delete', danger: true, body: <p>“{title}” and its history will be removed. This can’t be undone.</p>})) return;
     setBusy(true);
     try {await client.deleteProcedure(detail.procedure_token); toast('Skill deleted'); reload(); onClose();}
     catch (e) {toast((e as Error).message, 'bad'); setBusy(false);}
   }
 
   const d = detail?.definition;
+  const request = asked || d?.title || '';
+  const title = detail?.name || shortTitle(request);
   const status = detail ? skillStatus(detail.lifecycle_status, detail.successes, detail.needs_review) : undefined;
   return <Sheet open={Boolean(token)} onClose={onClose} label="Skill">
     <div className="sheet-head">
       <div className="sheet-title">
         <p className="eyebrow">Skill</p>
-        <h2>{d ? shortTitle(asked || d.title) : error ? 'Unavailable' : 'Loading…'}</h2>
+        <h2>{d ? title : error ? 'Unavailable' : 'Loading…'}</h2>
         {detail && status && <div className="sheet-meta"><Badge label={status.label} tone={status.tone}/><span>{status.explain}</span></div>}
       </div>
       <button type="button" className="icon-button" onClick={onClose} aria-label="Close"><Icon name="close"/></button>
@@ -130,7 +134,7 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
         {value: 'steps', label: 'What it does'}, {value: 'proof', label: 'Proof'}, {value: 'details', label: 'Details'}]}/></div>
       <div className="sheet-body" key={tab}>
         {tab === 'steps' && <div className="stack-sm">
-          {(asked || d.title) !== shortTitle(asked || d.title) && <p className="intent-line">Learned from your request: “{asked || d.title}”</p>}
+          {request !== title && <p className="intent-line">Learned from your request: “{request}”</p>}
           {detail.summary && <Summary summary={detail.summary} successes={detail.successes}/>}
           {(d.avoidance_rules?.length ?? 0) > 0 && <Notes title="Watch out" icon="alert" items={d.avoidance_rules!}/>}
           {(d.recovery_notes?.length ?? 0) > 0 && <Notes title="If it goes wrong" icon="refresh" items={d.recovery_notes!}/>}
@@ -186,6 +190,7 @@ function Proof({detail}: {detail: ProcedureDetail}) {
   </div>;
 }
 
+const clip = (text: string) => text.length > 180 ? `${text.slice(0, 178)}…` : text;
 const fileName = (path: string) => path.split('/').slice(-2).join('/');
 
 /** The skill in plain words: where to look, what changed (the real lines), how it was proved. */

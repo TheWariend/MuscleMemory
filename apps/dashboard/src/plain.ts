@@ -69,6 +69,11 @@ export function shortTitle(title?: string) {
   return first.length > 110 ? `${first.slice(0, 107)}…` : first;
 }
 
+/** What to call a skill: its built name, else the request it was learned from. */
+export function skillName(p: {name?: string; learned_from?: string; title?: string}) {
+  return p.name?.trim() || shortTitle(p.learned_from?.trim() || p.title);
+}
+
 /** "Passed 2 of 2 checks", "Needs 1 more check": where a skill stands, in words. */
 export function checksLine(successes = 0, failures = 0, status = '') {
   if (status === 'flagged') return `Failed ${failures} of ${successes + failures} checks`;

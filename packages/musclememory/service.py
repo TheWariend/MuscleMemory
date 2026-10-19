@@ -12,10 +12,12 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from .artifacts import (
+    extract_experience,
     needs_test_proof,
     operation_categories,
     search_document,
     semantic_document,
+    skill_name,
 )
 from .boundaries import derive_boundaries, refine_boundaries
 from .compiler import compile_trace
@@ -1123,6 +1125,7 @@ class MemoryService:
                 "visibility_scope": procedure.namespace,
                 "lifecycle_status": procedure.lifecycle,
                 "needs_review": procedure.reviewed_at is None,
+                "name": skill_name(extract_experience(revision.definition["steps"])) or "",
                 "test_proven": revision.test_proven_at is not None,
                 "test_written_by_skill": bool(skill_test(revision.definition))
                 and not needs_test_proof(revision.definition),
@@ -1266,7 +1269,7 @@ class MemoryService:
                 )
 
                 def summary(definition):
-                    from .artifacts import extract_experience, test_command
+                    from .artifacts import test_command
 
                     experience = extract_experience(definition["steps"])
                     checks = [
@@ -1279,6 +1282,7 @@ class MemoryService:
                         )[:300],
                         "changes": experience["writes"][:4],
                         "check": checks[-1:],
+                        "name": skill_name(experience) or "",
                     }
 
                 return {
