@@ -70,8 +70,10 @@ see [its setup](../integrations/cleanslate/README.md).
    Django's `runtests.py` and `manage.py test`, `jest`, `vitest`, `mocha`,
    `cargo test`, `go test`, `npm test` or `npm run test:*`, `make test`/`check`,
    `mvn test`, `gradle test`, `dotnet test`, `rspec` and similar, also behind
-   `uv run`, `npx`, `timeout` or environment variables. Commands that only mention
-   tests (`cargo build`, `ruff check`, `echo test`) don't count. File changes are edits, writes and patches made
+   `uv run`, `npx`, `timeout` or environment variables. `node --test` and a test
+   file run directly count too (`python3 test_login.py`, `node auth.test.mjs`).
+   Commands that only mention tests (`cargo build`, `ruff check`, `echo test`) and
+   type checks (`tsc`, `npm run typecheck`) don't count. File changes are edits, writes and patches made
    through the agent's file tools.
 
 ## How a session becomes a skill

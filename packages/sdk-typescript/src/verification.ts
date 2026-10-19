@@ -14,6 +14,9 @@ const TEST_SUBCOMMANDS: Record<string, string[]> = {
   rake: ['test', 'spec'], flutter: ['test'], dart: ['test'],
 };
 const PYTHON_TEST_MODULES = new Set(['pytest', 'unittest', 'tox', 'nox']);
+// A test file run directly: `python3 test_login.py`, `node auth.test.mjs`, `node --test`.
+const JS_RUNTIMES = new Set(['node', 'tsx', 'ts-node']);
+const TEST_FILE = /^(?:(?:test_.+|.+_test)\.py|.+\.(?:test|spec)\.[cm]?[jt]sx?)$/;
 // Prefixes that run the next program: `uv run pytest`, `npx jest`, `timeout 60 go test`.
 const LAUNCHERS: Record<string, string[] | null> = {
   uv: ['run'], poetry: ['run'], pipenv: ['run'], pdm: ['run'], hatch: ['run'], bundle: ['exec'],
@@ -71,7 +74,15 @@ export function testRun(stage: string): boolean {
     while (rest.length && rest[0].startsWith('-') && rest[0] !== '-m') rest = rest.slice(1);
     if (rest[0] === '-m') return rest.length > 1 && PYTHON_TEST_MODULES.has(rest[1]);
     const script = rest.length ? basename(rest[0]) : '';
-    return TEST_RUNNERS.has(script) || (script === 'manage.py' && rest[1] === 'test');
+    return TEST_RUNNERS.has(script) || TEST_FILE.test(script)
+      || (script === 'manage.py' && rest[1] === 'test');
+  }
+  if (JS_RUNTIMES.has(name)) {
+    while (rest.length && rest[0].startsWith('-')) {
+      if (rest[0] === '--test') return true;
+      rest = rest.slice(1);
+    }
+    return rest.length > 0 && TEST_FILE.test(basename(rest[0]));
   }
   const subcommands = TEST_SUBCOMMANDS[name];
   if (!rest.length || !subcommands) return false;

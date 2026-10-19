@@ -27,6 +27,9 @@ TEST_SUBCOMMANDS = {
     "dart": {"test"},
 }  # fmt: skip
 PYTHON_TEST_MODULES = {"pytest", "unittest", "tox", "nox"}
+# A test file run directly: `python3 test_login.py`, `node auth.test.mjs`, `node --test`.
+JS_RUNTIMES = {"node", "tsx", "ts-node"}
+TEST_FILE = re.compile(r"(?:test_.+|.+_test)\.py|.+\.(?:test|spec)\.[cm]?[jt]sx?")
 # Prefixes that run the next program: `uv run pytest`, `npx jest`, `timeout 60 go test`.
 LAUNCHERS = {
     "uv": {"run"}, "poetry": {"run"}, "pipenv": {"run"}, "pdm": {"run"}, "hatch": {"run"},
@@ -69,7 +72,17 @@ def test_run(words):
         if rest[:1] == ["-m"]:
             return len(rest) > 1 and rest[1] in PYTHON_TEST_MODULES
         script = posixpath.basename(rest[0]) if rest else ""
-        return script in TEST_RUNNERS or (script == "manage.py" and rest[1:2] == ["test"])
+        return (
+            script in TEST_RUNNERS
+            or bool(TEST_FILE.fullmatch(script))
+            or (script == "manage.py" and rest[1:2] == ["test"])
+        )
+    if name in JS_RUNTIMES:
+        while rest and rest[0].startswith("-"):
+            if rest[0] == "--test":
+                return True
+            rest = rest[1:]
+        return bool(rest) and bool(TEST_FILE.fullmatch(posixpath.basename(rest[0])))
     if not rest or name not in TEST_SUBCOMMANDS:
         return False
     if rest[0] in TEST_SUBCOMMANDS[name]:
