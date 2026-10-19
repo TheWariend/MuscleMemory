@@ -35,6 +35,8 @@ Give Codex a task, then:
 - Bash and `apply_patch` calls are recorded. Exit codes are read from Codex's
   "Process exited with code N" output.
 - Memory is added at the prompt, at most twice per session.
+- Codex's own background prompts, such as task suggestions, run in ephemeral threads
+  without a transcript. They are not recorded and get no memory.
 - On `Stop`, a session with a passing test after its last patch is verified and
   learned from. Otherwise it is closed as unverified and nothing is learned.
 

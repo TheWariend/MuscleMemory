@@ -591,6 +591,22 @@ def test_capture_control_does_not_inject_memory(codex_hook_host, service, princi
             queue.close()
 
 
+def test_codex_background_prompts_are_not_recorded(codex_hook_host):
+    config, calls, _, _ = codex_hook_host
+    # Codex's own suggestion runs are ephemeral threads: no transcript, nobody's task.
+    background = payload("UserPromptSubmit", prompt="Generate suggestions", transcript_path=None)
+    assert run_hook(config, "codex", background) == {}
+    run_hook(config, "codex", payload("PreToolUse", tool_name="Bash", tool_use_id="look"))
+    run_hook(config, "codex", payload("Stop"))
+    assert calls == []
+    run_hook(
+        config,
+        "codex",
+        payload("UserPromptSubmit", prompt="hi", turn_id="turn-b", transcript_path="/t.jsonl"),
+    )
+    assert calls.count("/v1/recall") == 1 and "/v1/observe" in calls
+
+
 def codex_session(config, turn, prompt, test_exit=0):
     """One Codex session: see the test fail, edit a file, run the tests again, stop."""
 

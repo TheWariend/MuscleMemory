@@ -323,6 +323,11 @@ class HookQueue:
                 prompt = payload.get("prompt", "")
                 if not isinstance(prompt, str) or not prompt:
                     raise ValueError("Prompt hook requires prompt text")
+                # Codex runs its own background prompts (task suggestions, safety checks)
+                # in ephemeral threads, which keep no transcript. Nobody asked for them.
+                if client == "codex" and "transcript_path" in payload:
+                    if payload["transcript_path"] is None:
+                        return None, "ephemeral_skipped"
                 # Claude has no turn id. Every prompt starts a fresh recording, including
                 # repeated identical prompts; the previous trace remains unverified.
                 if not turn or not row:
