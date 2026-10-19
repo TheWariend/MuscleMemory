@@ -231,6 +231,27 @@ def test_extraction_keeps_verifier_and_patch_targets_not_shell_bodies():
     ]
 
 
+def test_programs_and_listed_folders_are_not_files_a_skill_reads():
+    def reads(command):
+        return extract_experience(
+            [
+                {
+                    "step_token": "run",
+                    "arguments": {"command": command},
+                    "capability": "shell.execute",
+                    "effect": "destructive",
+                }
+            ]
+        )["reads"]
+
+    assert reads('ls -a | grep -i -E "agents|claude"; ls .github') == []
+    assert reads(
+        ".venv/bin/ruff check src/a.py && .venv/bin/python -m pytest tests/test_a.py -q"
+    ) == ["src/a.py", "tests/test_a.py"]
+    assert reads("CI=1 ./node_modules/.bin/jest src/a.test.js") == ["src/a.test.js"]
+    assert reads("cat src/a.py; head docs/b.md") == ["docs/b.md", "src/a.py"]
+
+
 def test_reindex_preserves_validation_and_history(service, principal):
     token = procedure(service, principal, "Build schema", "write", "schema.json")
     before = service.inspect(

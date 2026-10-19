@@ -354,14 +354,26 @@ def targets(arguments, effect, capability=""):
     words = command_parts(arguments.get("command"))
     reader = any(posixpath.basename(word) in READERS for word in words)
     verifier = "verify" in operation_categories(arguments, capability)
+    starts, listing = True, False
     for index, word in enumerate(words):
+        if word in {"&&", "||", "|", ";"}:
+            starts = True
+            continue
+        if starts and not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", word):
+            # The program a command runs (.venv/bin/python) is not a file it reads,
+            # and ls and find name folders to look through, not files.
+            starts, listing = False, posixpath.basename(word) in {"ls", "find"}
+            continue
+        if word.endswith(";"):
+            starts, word = True, word[:-1]
         # Shell redirects provide explicit producers. Do not infer output from
         # arbitrary script bodies or unknown tools classified as destructive.
         if index and words[index - 1] in {">", ">>", "1>", "2>"}:
             if path := normalized_path(word):
                 writes.add(path)
         elif (
-            (reader or verifier)
+            not listing
+            and (reader or verifier)
             and not word.startswith("-")
             and re.search(r"(?:/|\.[a-zA-Z0-9]{1,8}$)", word)
         ):
