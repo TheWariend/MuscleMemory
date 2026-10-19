@@ -33,3 +33,4 @@ benchmarks/results/browser-agent-*/**/.runtime/
 
 # Local agent settings (machine-specific hook paths)
 .claude/
+.codex/
