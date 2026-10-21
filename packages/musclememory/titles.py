@@ -35,6 +35,8 @@ def title_evidence(intent, experience, test):
 
 def chosen_agent(settings):
     """The agent picked to name new skills, or None when naming is off."""
+    if settings.deployment_mode != "local":
+        return None
     try:
         agent = json.loads(Path(settings.preferences_path).read_text()).get("skill_titles")
     except (TypeError, OSError, ValueError, AttributeError):
@@ -46,7 +48,7 @@ def choose_agent(settings, agent):
     """Save the choice; None turns naming off. Other preferences are kept."""
     from .local import private_write
 
-    if not settings.preferences_path:
+    if settings.deployment_mode != "local" or not settings.preferences_path:
         raise DomainError("local_only", "Settings are saved only on a local installation", 403)
     path = Path(settings.preferences_path)
     try:

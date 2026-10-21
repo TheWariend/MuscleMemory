@@ -118,10 +118,11 @@ establish that a skill is appropriate for another repository.
   never changes. The dashboard shows a **name** built from the skill instead, such
   as "Change rounding.py, checked by test_rounding.py": the files it changed and
   the test file it ran, or the test command. Names make no model calls, are not
-  stored, and recall never uses them; the request is shown under them. On the
-  settings page you can let Claude Code or Codex, the agent you already use, title
-  new skills instead; a skill's name button does the same for one skill. The agent
-  runs once in an empty folder, with no tools (Claude Code) or read-only (Codex), and
+  stored, and recall never uses them; the request is shown under them. On a local
+  installation's settings page you can let Claude Code or Codex, the agent you
+  already use, title new skills instead; a skill's name button does the same for
+  one skill. The agent runs once in an empty folder, with no tools (Claude Code) or
+  read-only (Codex), and
   gets the request (redacted), the paths changed and the test command, never file
   contents. A short, safe title replaces the built name on the dashboard; otherwise
   the built name stays. The choice is kept in `~/.musclememory/preferences.json`.

@@ -92,3 +92,46 @@ def test_the_button_names_an_existing_skill_with_either_agent(
 def test_settings_are_not_saved_without_a_local_preferences_file(http):
     assert http.get("/v1/preferences").json()["skill_titles"] == "off"
     assert http.put("/v1/preferences", json={"skill_titles": "claude"}).status_code == 403
+
+
+@pytest.fixture
+def hosted_service(service, agent):
+    service.settings = replace(
+        service.settings,
+        deployment_mode="hosted",
+        database_url="postgresql+psycopg://memory:example@postgres/musclememory",
+        public_url="https://memory.example",
+        allowed_hosts=("memory.example",),
+        allowed_origins=("https://memory.example",),
+    )
+    return service
+
+
+def test_hosted_preferences_cannot_read_or_change_local_settings(hosted_service, http):
+    path = Path(hosted_service.settings.preferences_path)
+    saved = '{"skill_titles": "claude"}\n'
+    path.write_text(saved)
+    headers = {"Host": "memory.example"}
+
+    assert http.get("/v1/preferences", headers=headers).json()["skill_titles"] == "off"
+    for choice in ("off", "claude", "codex"):
+        response = http.put("/v1/preferences", json={"skill_titles": choice}, headers=headers)
+        assert response.status_code == 403
+        assert response.json()["error"]["code"] == "local_only"
+        assert path.read_text() == saved
+
+    response = http.post("/v1/procedures/existing/name?agent=claude", headers=headers)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "local_only"
+
+
+@pytest.mark.parametrize("choice", ["claude", "codex"])
+def test_hosted_learning_ignores_local_agent_preferences(hosted_service, principal, agent, choice):
+    runs, _ = agent
+    Path(hosted_service.settings.preferences_path).write_text(json.dumps({"skill_titles": choice}))
+
+    learned(hosted_service, principal)
+    if hasattr(hosted_service, "titling"):
+        hosted_service.titling.join()
+
+    assert runs == []
