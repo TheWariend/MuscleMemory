@@ -139,6 +139,11 @@ class InspectInput(Contract):
     revision_selector: Literal["latest"] | Annotated[int, Field(ge=1)] = "latest"
 
 
+class PreferencesInput(Contract):
+    # Which agent names new skills for the dashboard: "off", "claude" or "codex".
+    skill_titles: Literal["off", "claude", "codex"]
+
+
 class SessionUsageInput(Contract):
     source: Literal["codex-cli", "claude-cli", "cleanslate-sdk", "client"]
     model: str | None = Field(default=None, max_length=200)

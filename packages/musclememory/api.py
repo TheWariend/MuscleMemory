@@ -22,6 +22,7 @@ from .core import (
     InspectInput,
     LearnInput,
     ObserveInput,
+    PreferencesInput,
     ProcedureDefinition,
     RecallInput,
     SessionUsageInput,
@@ -284,6 +285,18 @@ def create_app(service=None):
     @app.post("/v1/procedures/{procedure_token}/export")
     def export_skill(procedure_token: Token, agent: SkillAgent, actor=auth):
         return service.export_skill(actor, procedure_token, agent)
+
+    @app.post("/v1/procedures/{procedure_token}/name")
+    def name_skill(procedure_token: Token, agent: SkillAgent, actor=auth):
+        return service.name_skill(actor, procedure_token, agent)
+
+    @app.get("/v1/preferences")
+    def preferences(actor=auth):
+        return service.preferences(actor)
+
+    @app.put("/v1/preferences")
+    def set_preferences(request: PreferencesInput, actor=auth):
+        return service.set_preferences(actor, request.skill_titles)
 
     @app.post("/v1/procedures/{procedure_token}/approve")
     def approve(procedure_token: Token, actor=auth):

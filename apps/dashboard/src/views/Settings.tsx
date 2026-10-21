@@ -1,5 +1,5 @@
 import React, {useEffect, useState} from 'react';
-import type {Key, Permission} from '../api';
+import type {Key, Permission, Preferences} from '../api';
 import {ProviderLogo, type Provider} from '../logos';
 import {Badge, Chip, CodeBlock, CopyText, Empty, Icon, Skeleton, useFeedback} from '../ui';
 import {useWorkspace} from '../workspace';
@@ -20,6 +20,7 @@ const agents: Array<{id: Agent; label: string; logo: Provider}> = [
 export function Settings() {
   return <div className="stack">
     <Connect/>
+    <SkillNames/>
     <About/>
   </div>;
 }
@@ -73,6 +74,46 @@ function Connect() {
             : <p className="live"><span className="status-dot pulse"/>Waiting for the first session… this page checks by itself.</p>}
         </div></li>
       </ol>
+    </div>
+  </section>;
+}
+
+const namers: Array<{id: Preferences['skill_titles']; label: string; logo?: Provider}> = [
+  {id: 'off', label: 'Off'},
+  {id: 'claude', label: 'Claude Code', logo: 'claude'},
+  {id: 'codex', label: 'Codex', logo: 'codex'},
+];
+
+/** Which of your own agents gives new skills a readable title. */
+function SkillNames() {
+  const {client, can} = useWorkspace();
+  const {toast} = useFeedback();
+  const [choice, setChoice] = useState<Preferences['skill_titles']>();
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    client.preferences(controller.signal).then(p => setChoice(p.skill_titles)).catch(e => {if (!controller.signal.aborted) setError((e as Error).message);});
+    return () => controller.abort();
+  }, [client]);
+
+  async function choose(next: Preferences['skill_titles']) {
+    const before = choice;
+    setChoice(next);
+    try {await client.setPreferences(next); toast(next === 'off' ? 'New skills keep their built names.' : `${namers.find(n => n.id === next)!.label} will name new skills.`);}
+    catch (e) {setChoice(before); toast((e as Error).message, 'bad');}
+  }
+
+  return <section className="card">
+    <div className="card-head"><div><h2>Skill names</h2><p>Let the agent you already use give each new skill a short, readable title. It gets the request, the files changed and the test command, never file contents, and runs once without changing anything. Search and your agents still use the original request.</p></div></div>
+    <div className="pad stack-sm">
+      {error ? <div role="alert" className="banner tone-bad"><Icon name="alert"/><span>{error}</span></div>
+        : !choice ? <Skeleton rows={1}/>
+        : <div className="client-grid" role="radiogroup" aria-label="Name new skills with">{namers.map(n => <button type="button" role="radio" aria-checked={choice === n.id} key={n.id} className="client"
+          disabled={!can('admin')} onClick={() => void choose(n.id)}>
+          {n.logo ? <ProviderLogo provider={n.logo} size={20}/> : <Icon name="close" size={16}/>}<span><strong>{n.label}</strong></span>{choice === n.id && <span className="client-check"><Icon name="check" size={12}/></span>}
+        </button>)}</div>}
+      <p className="field-note">To name a skill you already have, open it and use the name button.</p>
     </div>
   </section>;
 }

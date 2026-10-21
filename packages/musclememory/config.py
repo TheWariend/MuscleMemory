@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from urllib.parse import urlsplit
 
-from .local import default_database_url
+from .local import default_database_url, home
 
 # Small local model used for the published Codex evaluations (384 dimensions).
 DEFAULT_EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -37,6 +37,8 @@ class Settings:
     boundary_llm_url: str | None = None
     boundary_llm_key: str | None = None
     boundary_llm_model: str = "boundary-refinement"
+    # Choices made on the dashboard's settings page; None turns them off (as in tests).
+    preferences_path: str | None = None
     allowed_hosts: tuple[str, ...] = ("127.0.0.1:*", "localhost:*", "testserver")
     allowed_origins: tuple[str, ...] = ("http://127.0.0.1:*", "http://localhost:*")
     deployment_mode: str = "local"
@@ -69,6 +71,7 @@ class Settings:
             boundary_llm_url=os.getenv("MM_BOUNDARY_LLM_URL"),
             boundary_llm_key=os.getenv("MM_BOUNDARY_LLM_KEY"),
             boundary_llm_model=os.getenv("MM_BOUNDARY_LLM_MODEL", "boundary-refinement"),
+            preferences_path=str(home() / "preferences.json"),
             allowed_hosts=tuple(
                 os.getenv("MM_ALLOWED_HOSTS", "127.0.0.1:*,localhost:*,testserver").split(",")
             ),

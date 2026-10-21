@@ -733,6 +733,124 @@
         }
       }
     },
+    "/v1/procedures/{procedure_token}/name": {
+      "post": {
+        "summary": "Name Skill",
+        "operationId": "name_skill_v1_procedures__procedure_token__name_post",
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "procedure_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "title": "Procedure Token"
+            }
+          },
+          {
+            "name": "agent",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "enum": [
+                "codex",
+                "claude"
+              ],
+              "type": "string",
+              "title": "Agent"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/preferences": {
+      "get": {
+        "summary": "Preferences",
+        "operationId": "preferences_v1_preferences_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "Set Preferences",
+        "operationId": "set_preferences_v1_preferences_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ]
+      }
+    },
     "/v1/procedures/{procedure_token}/approve": {
       "post": {
         "summary": "Approve",
@@ -1709,6 +1827,25 @@
           "observed"
         ],
         "title": "PerformanceMetrics"
+      },
+      "PreferencesInput": {
+        "properties": {
+          "skill_titles": {
+            "type": "string",
+            "enum": [
+              "off",
+              "claude",
+              "codex"
+            ],
+            "title": "Skill Titles"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "skill_titles"
+        ],
+        "title": "PreferencesInput"
       },
       "RecallInput": {
         "properties": {

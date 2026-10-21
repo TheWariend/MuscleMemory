@@ -118,7 +118,13 @@ establish that a skill is appropriate for another repository.
   never changes. The dashboard shows a **name** built from the skill instead, such
   as "Change rounding.py, checked by test_rounding.py": the files it changed and
   the test file it ran, or the test command. Names make no model calls, are not
-  stored, and recall never uses them; the request is shown under them.
+  stored, and recall never uses them; the request is shown under them. On the
+  settings page you can let Claude Code or Codex, the agent you already use, title
+  new skills instead; a skill's name button does the same for one skill. The agent
+  runs once in an empty folder, with no tools (Claude Code) or read-only (Codex), and
+  gets the request (redacted), the paths changed and the test command, never file
+  contents. A short, safe title replaces the built name on the dashboard; otherwise
+  the built name stays. The choice is kept in `~/.musclememory/preferences.json`.
 - **Steps** compiled from the successful session, with dead ends and failed
   branches removed. Steps keep their dependency graph.
 - **Files read and files changed**, the commands run, and the **test command**
@@ -281,7 +287,8 @@ stopped server and is delivered later with `musclememory hooks flush`.
   Browser agents can ask the MuscleMemory browser to carry out a proven skill; it checks
   every step and leaves the final submit to the agent.
 - It does not call a model by default. Embeddings run locally; the only remote
-  calls are ones you configure (`MM_EMBEDDING_URL`, `MM_BOUNDARY_LLM_URL`).
+  calls are ones you configure (`MM_EMBEDDING_URL`, `MM_BOUNDARY_LLM_URL`), and skill
+  titles from your own agent if you turn them on.
 - It does not learn from sessions with missing tool calls, from sessions where
   no test passed after the last change, or from the session being checked.
 - It does not hand a skill to agents before two independent checks and, for

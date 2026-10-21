@@ -91,6 +91,8 @@ class Procedure(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     # None means "learned automatically and waiting for a person's OK".
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # A title from Claude Code or Codex, for people only; None shows the built name.
+    name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     __table_args__ = (
         UniqueConstraint("tenant", "procedure_token"),
         Index("ix_procedures_scope_status", "tenant", "namespace", "lifecycle"),

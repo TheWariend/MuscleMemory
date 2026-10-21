@@ -5,7 +5,7 @@ export type ProcedureSummary = {
   successes?: number; failures?: number; confidence?: number; updated_at?: string;
   needs_review?: boolean; auto_learned?: boolean;
   learned_from?: string; changes?: string[]; check?: string[];
-  /** A name built from the files it changed and the test that checks it. */
+  /** A title from Claude Code or Codex, else a name built from the files it changed and its test. */
   name?: string;
 };
 export type RunSummary = {run_token: string; intent_text: string; status: string; agent_name?: string | null; created_at?: string};
@@ -45,6 +45,7 @@ export type SkillSummary = {
   test: string | null; look_around_steps: number; learned_by: string | null; checked_by: Record<string, number>;
 };
 export type SkillAgent = 'codex' | 'claude';
+export type Preferences = {skill_titles: 'off' | SkillAgent; agents: Record<SkillAgent, string>};
 export type ExportResult = {agent: SkillAgent; name: string; installed: boolean; unchanged: boolean};
 export type RunEvent = {
   event_id: string; sequence: number; kind: 'intent' | 'tool' | 'completion'; intent_text: string | null;
@@ -102,6 +103,9 @@ export function createClient(key: string) {
     retire: (id: string) => call<{lifecycle_status: string}>('POST', `/v1/procedures/${token(id)}/retire`),
     deleteProcedure: (id: string) => call<{deleted: boolean}>('DELETE', `/v1/procedures/${token(id)}`),
     deleteRun: (id: string) => call<{deleted: boolean}>('DELETE', `/v1/runs/${token(id)}`),
+    nameSkill: (id: string, agent: SkillAgent) => call<{name: string}>('POST', `/v1/procedures/${token(id)}/name?agent=${agent}`),
+    preferences: (signal?: AbortSignal) => call<Preferences>('GET', '/v1/preferences', undefined, signal),
+    setPreferences: (skill_titles: Preferences['skill_titles']) => call<Preferences>('PUT', '/v1/preferences', {skill_titles}),
     exportSkill: (id: string, agent: SkillAgent) => call<ExportResult>('POST', `/v1/procedures/${token(id)}/export?agent=${agent}`),
     revokeKey: (id: string, scope: string) => call<unknown>('DELETE', `/v1/keys/${token(id)}?${scoped(scope)}`),
   };

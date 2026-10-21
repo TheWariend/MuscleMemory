@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import type {ProcedureDetail, ProcedureSummary, SkillSummary} from '../api';
+import type {ProcedureDetail, ProcedureSummary, SkillAgent, SkillSummary} from '../api';
 import {agentName, checksLine, describeStep, requestDetails, shortCommand, shortTitle, skillName, skillStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, NoteText, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {ProviderLogo} from '../logos';
@@ -74,6 +74,14 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
   const [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>('steps');
   const [busy, setBusy] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [namer, setNamer] = useState<SkillAgent | 'off'>('off');
+
+  useEffect(() => {
+    const controller = new AbortController();
+    client.preferences(controller.signal).then(p => setNamer(p.skill_titles)).catch(() => {/* the button falls back below */});
+    return () => controller.abort();
+  }, [client]);
 
   useEffect(() => {
     if (!token) return;
@@ -89,6 +97,16 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     try {await client.approve(detail.procedure_token); toast('Kept. Agents get it once it has passed two checks.'); setDetail({...detail, needs_review: false}); reload();}
     catch (e) {toast((e as Error).message, 'bad');}
     finally {setBusy(false);}
+  }
+  async function nameIt(agent: SkillAgent) {
+    if (!detail) return;
+    setNaming(true);
+    try {
+      const {name} = await client.nameSkill(detail.procedure_token, agent);
+      setDetail({...detail, name}); toast(`Named by ${agentName(agent)}.`); reload();
+    }
+    catch (e) {toast((e as Error).message, 'bad');}
+    finally {setNaming(false);}
   }
   async function turnOff() {
     if (!detail || !await confirm({title: 'Turn off this skill?', confirm: 'Turn off', body: <p>Agents will stop getting “{title}”. Its history is kept.</p>})) return;
@@ -117,6 +135,9 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
   const d = detail?.definition;
   const request = asked || d?.title || '';
   const title = detail?.name || shortTitle(request);
+  // The agent chosen in settings, else the one that learned this skill.
+  const learnedBy = detail?.summary?.learned_by;
+  const nameWith: SkillAgent = namer !== 'off' ? namer : learnedBy === 'codex' ? 'codex' : 'claude';
   const status = detail ? skillStatus(detail.lifecycle_status, detail.successes, detail.needs_review) : undefined;
   return <Sheet open={Boolean(token)} onClose={onClose} label="Skill">
     <div className="sheet-head">
@@ -151,6 +172,10 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
         {tab === 'details' && <CodeBlock label="Full skill (JSON)">{JSON.stringify(d, null, 2)}</CodeBlock>}
       </div>
       {(can('write') || can('delete')) && <div className="sheet-foot">
+        {can('admin') && <button type="button" className="secondary-button" disabled={busy || naming} onClick={() => void nameIt(nameWith)}
+          title={`Ask ${agentName(nameWith)} for a short title. It gets the request, the files changed and the test command.`}>
+          <ProviderLogo provider={nameWith} size={13}/>{naming ? 'Naming…' : `Name with ${agentName(nameWith)}`}
+        </button>}
         {can('write') && detail.needs_review && <button type="button" className="primary-button" disabled={busy} onClick={() => void keep()}><Icon name="check" size={14}/>Keep</button>}
         {can('admin') && detail.lifecycle_status === 'active' && !detail.needs_review && (['codex', 'claude'] as const).map(agent =>
           <button key={agent} type="button" className="secondary-button" disabled={busy} onClick={() => void exportTo(agent)}

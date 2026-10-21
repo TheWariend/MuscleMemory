@@ -3,6 +3,7 @@
 import hashlib
 import json
 import tempfile
+import threading
 import time
 from datetime import timedelta
 from pathlib import Path
@@ -18,6 +19,7 @@ from .artifacts import (
     search_document,
     semantic_document,
     skill_name,
+    test_command,
 )
 from .boundaries import derive_boundaries, refine_boundaries
 from .compiler import compile_trace
@@ -68,6 +70,7 @@ from .storage import (
     Tombstone,
     utcnow,
 )
+from .titles import AGENTS, ask_agent, choose_agent, chosen_agent, title_evidence
 
 
 def skill_fingerprint(definition):
@@ -659,8 +662,73 @@ class MemoryService:
             }
             run.learned_result = {"result": result, "request_digest": fingerprint}
             self.audit(session, principal, run.namespace, "learn", procedure.procedure_token)
+            agent = chosen_agent(self.settings) if procedure.name is None else None
+            if agent:
+                checks = definition.experience["verification_commands"]
+                evidence = title_evidence(
+                    run.intent, definition.experience, test_command(checks[-1]) if checks else ""
+                )
             session.commit()
-            return result
+        if agent:
+            # Asked after learning, so a slow agent never holds up the hook that learned it.
+            self.titling = threading.Thread(
+                target=self._title_skill,
+                args=(procedure.procedure_token, agent, evidence),
+                daemon=True,
+            )
+            self.titling.start()
+        return result
+
+    def _title_skill(self, token, agent, evidence):
+        """Name a new skill in the background; on any failure the built name stays."""
+        try:
+            title = ask_agent(agent, evidence)
+        except DomainError:
+            return
+        with self.db.transaction() as session:
+            procedure = session.get(Procedure, token)
+            if procedure is not None and procedure.name is None:
+                procedure.name = title
+                session.commit()
+
+    def name_skill(self, principal, token, agent):
+        """Ask Claude Code or Codex for a skill's title now: the dashboard's button."""
+        if self.settings.deployment_mode != "local":
+            raise DomainError("local_only", "Naming skills works only on a local installation", 403)
+        with self.db.session() as session:
+            procedure = self._procedure(session, principal, token, "admin")
+            definition = session.get(
+                Revision, (procedure.procedure_token, procedure.current_version)
+            ).definition
+            source = session.get(
+                Run, (principal.tenant, definition["provenance"].get("source_run", ""))
+            )
+        experience = extract_experience(definition["steps"])
+        checks = experience["verification_commands"]
+        evidence = title_evidence(
+            source.intent if source else definition["title"],
+            experience,
+            test_command(checks[-1]) if checks else "",
+        )
+        title = ask_agent(agent, evidence)  # outside any transaction: it can take a minute
+        with self.db.transaction() as session:
+            procedure = self._procedure(session, principal, token, "admin")
+            procedure.name = title
+            self.audit(session, principal, procedure.namespace, "name", token)
+            session.commit()
+        return {"procedure_token": token, "name": title}
+
+    def preferences(self, principal):
+        """The dashboard's settings: which agent names new skills ("off" when none)."""
+        return {"skill_titles": chosen_agent(self.settings) or "off", "agents": AGENTS}
+
+    def set_preferences(self, principal, skill_titles):
+        if skill_titles not in {"off", *AGENTS}:
+            raise DomainError("invalid_input", "Choose off, claude or codex", 422)
+        if not any("admin" in grants for grants in principal.grants.values()):
+            raise DomainError("forbidden", "Changing settings needs admin access", 403)
+        choose_agent(self.settings, None if skill_titles == "off" else skill_titles)
+        return self.preferences(principal)
 
     def recall(self, principal, request: RecallInput, *, observation_run=None):
         principal.require(request.visibility_scope, "read")
@@ -1125,7 +1193,9 @@ class MemoryService:
                 "visibility_scope": procedure.namespace,
                 "lifecycle_status": procedure.lifecycle,
                 "needs_review": procedure.reviewed_at is None,
-                "name": skill_name(extract_experience(revision.definition["steps"])) or "",
+                "name": procedure.name
+                or skill_name(extract_experience(revision.definition["steps"]))
+                or "",
                 "test_proven": revision.test_proven_at is not None,
                 "test_written_by_skill": bool(skill_test(revision.definition))
                 and not needs_test_proof(revision.definition),
@@ -1289,6 +1359,7 @@ class MemoryService:
                     "items": [
                         {
                             **summary(r.definition),
+                            **({"name": p.name} if p.name else {}),
                             "procedure_token": p.procedure_token,
                             "version": p.current_version,
                             "status": p.lifecycle,
