@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "thewariend-musclememory"
-version = "0.1.6"
+version = "0.1.7"
 description = "Open-source procedural memory for AI agents: learns from what worked and what failed."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
