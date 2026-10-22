@@ -2,7 +2,7 @@
 
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, model_validator
 
 Token = Annotated[str, Field(min_length=1, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$")]
 Capability = Annotated[str, Field(max_length=96, pattern=r"^[a-z][a-z0-9_.-]+$")]
@@ -28,6 +28,7 @@ class ExecutionEvent(Contract):
     event_id: Token
     sequence: int = Field(ge=0)
     kind: Literal["intent", "tool", "completion"]
+    occurred_at: AwareDatetime | None = None
     intent_text: str | None = Field(default=None, max_length=8000)
     tool_name: Token | None = None
     capability: Capability | None = None

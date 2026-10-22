@@ -67,8 +67,9 @@
 
 ## Known limits
 
-- Sessions with parallel tool calls, or a missing "tool finished" event, are kept
-  but not learned from.
+- Sessions with conflicting parallel actions, or a missing "tool finished" event
+  for a potentially mutating action, are kept but not learned from. Parallel reads
+  and edits to different files are supported.
 - A shell command counts as a code change when it changes files that differ from
   version control (or, outside git, any file in the project). Changes that leave the
   same state as before, or that are committed inside the same command, are not seen.

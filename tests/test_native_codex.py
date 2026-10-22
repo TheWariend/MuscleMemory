@@ -106,7 +106,7 @@ def test_live_codex_native_hook_capture(tmp_path, remote_server, credential, ser
             assert not (set(json.loads(runs[0]["gaps"])) - {"unverified_exit_status"})
             token = runs[0]["token"]
             trace = service.get_run(principal, token)
-            assert trace["status"] == "incomplete"
+            assert trace["status"] == "unverified"
             assert [event["kind"] for event in trace["events"]] == ["intent", "tool", "completion"]
             assert trace["events"][1]["tool_name"] == "Bash"
             assert trace["events"][1]["status"] == "success"

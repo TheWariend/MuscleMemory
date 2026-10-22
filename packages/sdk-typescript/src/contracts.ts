@@ -29,6 +29,7 @@ export type ExecutionEvent = {
   "event_id": string;
   "sequence": number;
   "kind": "intent" | "tool" | "completion";
+  "occurred_at"?: string | null;
   "intent_text"?: string | null;
   "tool_name"?: string | null;
   "capability"?: string | null;

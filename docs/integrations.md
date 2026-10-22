@@ -88,7 +88,34 @@ see [its setup](../integrations/cleanslate/README.md).
 - **Tests failed:** nothing is learned. If the session was given a skill, changed
   code, and that skill's own test was the last test and failed, it counts as a
   failed check for that skill.
-- **No test ran, or the capture has gaps:** nothing is learned.
+- **No verified outcome:** the recording closes as **Not verified**; nothing is learned.
+  A new prompt also closes an interrupted previous turn in the same session.
+- **Capture gaps:** the recording closes as **Incomplete** and shows the capture reason;
+  nothing is learned.
+
+For older hook queues with sessions stuck **In progress**, run:
+
+```sh
+musclememory hooks repair --client claude --config ~/.musclememory/hooks/claude.json
+```
+
+Use `--client codex` and `codex.json` for Codex. This closes ended turns and turns
+superseded by a newer prompt in the same session, then delivers pending events.
+It preserves existing events, never infers success, and leaves the latest open
+turn in each session alone. Delivery can be retried with `hooks flush`.
+
+New native and SDK recordings preserve the original start time when uploaded
+after an outage. For a local SQLite installation with older backlog records that
+already show their upload time in Activity, preview timestamp recovery with:
+
+```sh
+python scripts/repair_activity_timestamps.py
+python scripts/repair_activity_timestamps.py --apply
+```
+
+The second command creates a private database backup and restores start times
+from matching local hook queue records. It checks the endpoint, credential,
+workspace, runtime and intent, and preserves events, outcomes and retention.
 
 A skill reaches agents only when both are true:
 

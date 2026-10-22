@@ -72,7 +72,7 @@ export class ObservedRun {
         !intent || intent.length > 8000 || captureSize(this.profile) > 65536 || !validProfile(this.profile)) {
       throw new CaptureError('invalid_metadata');
     }
-    this.emit({kind: 'intent', intent_text: intent});
+    this.emit({kind: 'intent', intent_text: intent, occurred_at: new Date().toISOString()});
   }
 
   /** Resume delivery of data only. Previously executed tools are never replayed. */

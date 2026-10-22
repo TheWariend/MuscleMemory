@@ -79,7 +79,7 @@ def test_codex_receipt_recovery_supports_learning_and_actual_usage(
     )
     queue.handle("codex", payload("Stop"), tools, runtime, "team")
     queue.deliver(client, token)
-    assert service.get_run(principal, token)["status"] == "incomplete"
+    assert service.get_run(principal, token)["status"] == "unverified"
     with pytest.raises(ValueError, match="complete"):
         queue.attest(token, True)
     receipts = [
@@ -113,7 +113,7 @@ def test_codex_receipt_recovery_supports_learning_and_actual_usage(
     try:
         assert queue.reconcile(client, token, receipts, True) == derived
         assert queue.reconcile(client, token, receipts, True) == derived
-        assert service.get_run(principal, token)["status"] == "incomplete"
+        assert service.get_run(principal, token)["status"] == "unverified"
         evidence = queue.learning_evidence(client, derived)
         assert evidence[-1]["status"] == "success"
         learned = service.learn(
@@ -203,14 +203,19 @@ def test_native_capture_survives_processes_and_lost_ack(
         try:
             token = queue.listing()[0]["token"]
             trace = service.get_run(principal, token)
-            assert trace["status"] == "recording"  # Stop never self-attests correctness.
+            assert trace["status"] == "unverified"  # Stop never self-attests correctness.
             assert trace["events"][1]["arguments"]["api_key"] == "[REDACTED]"
             queue.db.execute("UPDATE events SET ack=0")
-            assert queue.deliver(client, token) == 2  # Exact duplicate delivery accepted.
-            assert len(service.get_run(principal, token)["events"]) == 2
-            queue.attest(token, True)
-            queue.deliver(client, token)
-            assert service.get_run(principal, token)["status"] == "success"
+            assert queue.deliver(client, token) == 3  # Exact duplicate delivery accepted.
+            assert len(service.get_run(principal, token)["events"]) == 3
+            derived = queue.attest(token, True)
+            assert derived != token
+            assert queue.attest(token, True) == derived
+            queue.deliver(client, derived)
+            assert service.get_run(principal, token)["status"] == "unverified"
+            assert service.get_run(principal, derived)["status"] == "success"
+            with pytest.raises(ValueError, match="existing outcome"):
+                queue.attest(token, False)
         finally:
             queue.close()
     assert credential["api_key"].encode() not in (tmp_path / "state/hooks.sqlite").read_bytes()
@@ -253,7 +258,7 @@ def test_vendor_shapes_failure_and_no_permission_changes(client, tmp_path):
             queue.db.execute("SELECT payload FROM events WHERE sequence=1").fetchone()[0]
         )
         assert event["status"] == "failure"
-        assert queue.listing()[0]["closed"] == (1 if client == "codex" else 0)
+        assert queue.listing()[0]["closed"] == 1
         assert queue.listing()[0]["ended"] == 1
     finally:
         queue.close()
@@ -586,7 +591,7 @@ def test_capture_control_does_not_inject_memory(codex_hook_host, service, princi
             assert captured["ended"] and json.loads(captured["gaps"]) == ["unverified_exit_status"]
             trace = service.get_run(principal, captured["token"])
             assert trace["events"][1]["arguments"]["command"] == "cat fixture.json"
-            assert trace["status"] == "incomplete"
+            assert trace["status"] == "unverified"
         finally:
             queue.close()
 
@@ -1135,6 +1140,138 @@ def test_documentation_edits_after_passing_tests_keep_the_session_verified(
         )
     hook("Stop")
     assert len(service.listing(principal, "team", "procedures")["items"]) == 1
+
+
+@pytest.mark.parametrize("test_output", [
+    {"stdout": "Ran 4 tests\n\nOK"},
+    {"stderr": "Ran 4 tests\n\nOK"},
+    {"output": "Ran 4 tests\n\nOK"},
+    {"aggregated_output": "Ran 4 tests\n\nOK"},
+    {"content": [{"type": "text", "text": "Ran 4 tests\n\nOK"}]},
+])
+def test_structured_codex_test_summaries_are_verified(
+    codex_hook_host, service, principal, test_output
+):
+    config, *_ = codex_hook_host
+    codex_plain_session(config, "structured", "Fix rounding", test_output)
+    assert service.listing(principal, "team", "runs")["items"][0]["status"] == "success"
+    assert len(service.listing(principal, "team", "procedures")["items"]) == 1
+
+
+@pytest.mark.parametrize("test_output", [
+    {"stderr": "Ran 4 tests\n\nFAILED (failures=1)"},
+    {"metadata": "Ran 4 tests\n\nOK"},
+])
+def test_failed_or_unknown_structured_results_do_not_teach(
+    codex_hook_host, service, principal, test_output
+):
+    config, *_ = codex_hook_host
+    codex_plain_session(config, "unproven", "Fix rounding", test_output)
+    assert service.listing(principal, "team", "procedures")["items"] == []
+    status = service.listing(principal, "team", "runs")["items"][0]["status"]
+    assert status == ("failure" if "stderr" in test_output else "unverified")
+
+
+def test_context_lookups_and_parallel_reads_allow_real_fix_learning_and_reuse(
+    codex_hook_host, service, principal, tmp_path
+):
+    """Real failing/passing tests, three independent captures and a fresh recall."""
+    config, *_ = codex_hook_host
+    repo = git_project(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests/test_rounding.py").write_text(
+        "import unittest\nfrom app.rounding import cents\n"
+        "class Rounding(unittest.TestCase):\n"
+        "    def test_fraction(self):\n        self.assertEqual(cents(1.9), 2)\n"
+    )
+    command = "python3 -m unittest discover -s tests -v"
+    patch = (
+        "*** Begin Patch\n*** Update File: app/rounding.py\n@@\n"
+        "-    return int(x)\n+    return round(x)\n*** End Patch"
+    )
+
+    def hook(event, turn, **fields):
+        return run_hook(config, "codex", payload(event, turn_id=turn, cwd=str(repo), **fields))
+
+    def test_run(turn, source, expected):
+        fields = {"tool_name": "Bash", "tool_use_id": source,
+                  "tool_input": {"command": command}}
+        hook("PreToolUse", turn, **fields)
+        result = subprocess.run(command, shell=True, cwd=repo, capture_output=True, text=True)
+        assert (result.returncode == 0) is expected, result.stderr
+        hook("PostToolUse", turn, **fields,
+             tool_response={"stdout": result.stdout, "stderr": result.stderr})
+
+    for index in range(3):
+        turn = f"actual-{index}"
+        (repo / "app/rounding.py").write_text("def cents(x):\n    return int(x)\n")
+        hook("UserPromptSubmit", turn, prompt="Fix rounding in app/rounding.py")
+        # These are the native tool names found in real incomplete captures.
+        for name in ("webrun", "view_image", "request_user_input_async",
+                     "mcp__codex_apps__github__fetch_file"):
+            fields = {"tool_name": name, "tool_use_id": f"{turn}-{name}"}
+            hook("PreToolUse", turn, **fields)
+            hook("PostToolUse", turn, **fields, tool_response={"result": "context"})
+        readers = [("numbered", "nl -ba app/rounding.py"),
+                   ("search", "rg -n 'cents|round' app/rounding.py")]
+        for source, read in readers:
+            hook("PreToolUse", turn, tool_name="Bash", tool_use_id=source,
+                 tool_input={"command": read})
+        for source, read in readers:
+            result = subprocess.run(read, shell=True, cwd=repo, capture_output=True, text=True)
+            hook("PostToolUse", turn, tool_name="Bash", tool_use_id=source,
+                 tool_input={"command": read}, tool_response=result.stdout)
+        test_run(turn, "red", False)
+        hook("PreToolUse", turn, tool_name="apply_patch", tool_use_id="edit",
+             tool_input={"input": patch})
+        (repo / "app/rounding.py").write_text("def cents(x):\n    return round(x)\n")
+        hook("PostToolUse", turn, tool_name="apply_patch", tool_use_id="edit",
+             tool_input={"input": patch}, tool_response="Success. Updated app/rounding.py")
+        test_run(turn, "green", True)
+        hook("Stop", turn)
+
+    [skill] = service.listing(principal, "team", "procedures")["items"]
+    assert skill["successes"] == 2 and skill["needs_review"]
+    assert all(r["status"] == "success"
+               for r in service.listing(principal, "team", "runs")["items"])
+    service.approve(principal, skill["procedure_token"])
+    (repo / "app/rounding.py").write_text("def cents(x):\n    return int(x)\n")
+    output = hook("UserPromptSubmit", "fresh", prompt="Fix rounding in app/rounding.py")
+    pointer = json.loads(output["hookSpecificOutput"]["additionalContext"])
+    assert pointer["procedure"] == skill["procedure_token"]
+
+
+@pytest.mark.parametrize("name", ["webrun", "mcp__codex_apps__github__fetch_file"])
+def test_context_only_sessions_are_complete_but_unverified(
+    codex_hook_host, service, principal, name
+):
+    config, *_ = codex_hook_host
+    run_hook(config, "codex", payload("UserPromptSubmit", prompt="Explain this project"))
+    # No result for a known read-only context helper cannot hide a code change.
+    run_hook(config, "codex", payload("PreToolUse", tool_name=name, tool_use_id="lookup"))
+    run_hook(config, "codex", payload("Stop"))
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert run["status"] == "unverified"
+    completion = service.get_run(principal, run["run_token"])["events"][-1]
+    assert completion["capture_complete"] and not completion["outcome_verified"]
+    assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+@pytest.mark.parametrize("name", [
+    "mcp__codex_apps__github__create_commit", "unknown__fetch_file", "my_webrun",
+])
+def test_unknown_actions_still_block_learning(codex_hook_host, service, principal, name):
+    config, *_ = codex_hook_host
+    run_hook(config, "codex", payload("UserPromptSubmit", prompt="Fix rounding"))
+    for event in ("PreToolUse", "PostToolUse"):
+        run_hook(config, "codex", payload(event, tool_name=name, tool_use_id="unknown"))
+    # Reusing the same turn records edits and a passing test after the unknown action.
+    codex_plain_session(config, "turn-a", "Fix rounding", "Ran 4 tests\n\nOK")
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert run["status"] == "incomplete"
+    completion = service.get_run(principal, run["run_token"])["events"][-1]
+    assert "unmapped_tool:" + name in completion["response"]["reason"]
+    assert service.listing(principal, "team", "procedures")["items"] == []
 
 
 def test_a_command_beside_edits_is_kept_but_proves_nothing(tmp_path):

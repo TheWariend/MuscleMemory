@@ -171,6 +171,29 @@ def piped_test(words, command):
     return False
 
 
+def output_text(response):
+    """Read known terminal output fields without escaping their newlines as JSON."""
+    if isinstance(response, str):
+        return response
+    if not isinstance(response, dict):
+        return ""
+    parts = [
+        response[key]
+        for key in ("stdout", "stderr", "output", "aggregated_output", "text")
+        if isinstance(response.get(key), str)
+    ]
+    content = response.get("content")
+    if isinstance(content, list):
+        parts.extend(
+            item["text"]
+            for item in content
+            if isinstance(item, dict)
+            and item.get("type") == "text"
+            and isinstance(item.get("text"), str)
+        )
+    return "\n".join(parts)
+
+
 def test_output_verdict(text):
     """True/False from the runner's own summary line, None when it cannot be told."""
     if not isinstance(text, str) or not text:

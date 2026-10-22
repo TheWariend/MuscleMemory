@@ -5,7 +5,7 @@ import json
 import tempfile
 import threading
 import time
-from datetime import timedelta
+from datetime import timedelta, timezone
 from pathlib import Path
 
 from pydantic import ValidationError
@@ -359,6 +359,11 @@ class MemoryService:
                     namespace=request.visibility_scope,
                     intent=first.intent_text,
                     runtime=request.runtime_profile.model_dump(mode="json"),
+                    # A queued intent happened before delivery. Keep its original
+                    # start for Activity; a future client clock cannot pin a run.
+                    created_at=min(
+                        utcnow(), first.occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
+                    ) if first.occurred_at else utcnow(),
                     expires_at=utcnow() + timedelta(days=self.settings.trace_retention_days),
                 )
                 session.add(run)
@@ -412,6 +417,11 @@ class MemoryService:
                         raise DomainError(
                             "intent_conflict", "Intent must match the execution and appear first"
                         )
+                    if event.kind == "intent" and event.occurred_at:
+                        run.created_at = min(
+                            run.created_at,
+                            event.occurred_at.astimezone(timezone.utc).replace(tzinfo=None),
+                        )
                     if event.kind == "tool":
                         if (
                             request.runtime_profile.bindings.get(event.capability)
@@ -443,11 +453,12 @@ class MemoryService:
                     next_sequence += 1
                     accepted += 1
                     if event.kind == "completion":
-                        run.status = (
-                            ("success" if event.status == "success" else "failure")
-                            if event.capture_complete
-                            else "incomplete"
-                        )
+                        if not event.capture_complete:
+                            run.status = "incomplete"
+                        elif not event.outcome_verified:
+                            run.status = "unverified"
+                        else:
+                            run.status = event.status
                         closed = True
                 except ValidationError as error:
                     errors.append(
@@ -485,6 +496,7 @@ class MemoryService:
             or events[-1].kind != "completion"
             or events[-1].status != "success"
             or not events[-1].capture_complete
+            or not events[-1].outcome_verified
         ):
             raise DomainError(
                 "unverified_run", "Learning requires a successful closed trace and proof"
@@ -1407,12 +1419,16 @@ class MemoryService:
     def get_run(self, principal, token):
         with self.db.transaction() as session:
             run = self._run(session, principal, token, "read")
+            events = self._events(session, run)
+            response = events[-1].response if events and events[-1].kind == "completion" else None
+            reason = response.get("reason") if isinstance(response, dict) else None
             return {
                 "run_token": run.run_token,
                 "intent_text": run.intent,
                 "status": run.status,
                 "runtime_profile": run.runtime,
-                "events": [e.model_dump(mode="json") for e in self._events(session, run)],
+                "events": [e.model_dump(mode="json") for e in events],
+                "capture_reason": reason if isinstance(reason, str) else None,
             }
 
     def delete_memory(self, principal, token, kind="procedure"):

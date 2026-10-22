@@ -28,7 +28,10 @@ def main():
     hooks = sub.add_parser("hooks", help="Install native client hooks and manage captured traces")
     hooks.add_argument(
         "action",
-        choices=["install", "receive", "list", "flush", "attest", "reconcile", "learn", "purge"],
+        choices=[
+            "install", "receive", "list", "flush", "repair", "attest", "reconcile",
+            "learn", "purge",
+        ],
     )
     hooks.add_argument("--client", choices=["claude", "codex", "cursor", "all"], default="claude")
     hooks.add_argument("--config", required=True, help="JSON config (no embedded API keys)")
