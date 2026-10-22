@@ -172,7 +172,7 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
         {tab === 'details' && <CodeBlock label="Full skill (JSON)">{JSON.stringify(d, null, 2)}</CodeBlock>}
       </div>
       {(can('write') || can('delete')) && <div className="sheet-foot">
-        {can('admin') && <button type="button" className="secondary-button" disabled={busy || naming} onClick={() => void nameIt(nameWith)}
+        {can('admin') && !detail.name && <button type="button" className="secondary-button" disabled={busy || naming} onClick={() => void nameIt(nameWith)}
           title={`Ask ${agentName(nameWith)} for a short title. It gets the request, the files changed and the test command.`}>
           <ProviderLogo provider={nameWith} size={13}/>{naming ? 'Naming…' : `Name with ${agentName(nameWith)}`}
         </button>}
