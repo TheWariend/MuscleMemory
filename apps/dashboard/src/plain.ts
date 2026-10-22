@@ -19,7 +19,47 @@ export function sessionStatus(status: string): {label: string; tone: Tone} {
   if (status === 'success') return {label: 'Succeeded', tone: 'good'};
   if (status === 'failure') return {label: 'Failed', tone: 'bad'};
   if (status === 'recording') return {label: 'In progress', tone: 'info'};
-  return {label: 'Incomplete', tone: 'neutral'};
+  if (status === 'unverified') return {label: 'Not verified', tone: 'neutral'};
+  return {label: 'Capture incomplete', tone: 'neutral'};
+}
+
+const captureIssues: Record<string, string> = {
+  parallel_tool_dependencies_unknown: 'Some actions ran at the same time. MuscleMemory could not tell which actions depended on others.',
+  unverified_exit_status: 'Some commands had no confirmed success or failure result.',
+  unfinished_tool: 'The recording ended before a result was received for an action that could change files or data.',
+  missing_tool_call_id: 'An action was missing the identifier needed to match it with its result.',
+  conflicting_duplicate: 'Conflicting records were received for the same action.',
+  late_event_or_trace_limit: 'Some actions arrived after the recording closed, or the session exceeded the recording limit.',
+  oversized_arguments: 'An action contained more information than the recorder could store.',
+  configuration_changed: 'The recording settings changed while this session was running.',
+  tool_after_stop: 'An action result arrived after the session had already ended.',
+};
+
+const outcomeIssues: Record<string, string> = {
+  'No verified task outcome was recorded': 'The session ended without a confirmed task result.',
+  'Session ended without a verified task outcome': 'The session ended without a confirmed task result.',
+  'Codex turn ended without externally verified outcome': 'The session ended without a confirmed task result.',
+  'No confirmed test result after a code change': 'The code changed, but no passing test result was recorded afterwards.',
+  'A new prompt arrived before this turn recorded an outcome': 'A new request started before the previous task’s result was recorded.',
+};
+
+/** Explain capture diagnostics without exposing internal codes in the session view. */
+export function sessionIssues(status: string, reason?: string | null): string[] {
+  if (status !== 'incomplete' && status !== 'unverified') return [];
+  const fallback = status === 'unverified'
+    ? 'The session ended without a confirmed task result.'
+    : 'Some actions could not be recorded reliably.';
+  if (!reason) return [fallback];
+  const gaps = reason.match(/^Capture gaps:\s*(.*)$/i);
+  if (!gaps) {
+    const outcome = reason.trim();
+    return [Object.hasOwn(outcomeIssues, outcome) ? outcomeIssues[outcome] : fallback];
+  }
+  return [...new Set(gaps[1].split(',').map(code => {
+    const issue = code.trim();
+    if (issue.startsWith('unmapped_tool:')) return 'One of the tools used in this session is not supported by the recorder.';
+    return Object.hasOwn(captureIssues, issue) ? captureIssues[issue] : fallback;
+  }))];
 }
 
 function text(value: unknown): string {
