@@ -72,8 +72,10 @@ def overlapping_paths(left, right):
         return True
     try:
         return os.path.samefile(left, right)
-    except (OSError, ValueError):
+    except FileNotFoundError:
         return False
+    except (OSError, ValueError):
+        return True
 
 
 def ignored(path):
