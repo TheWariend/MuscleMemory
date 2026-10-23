@@ -269,7 +269,7 @@ class HookQueue:
                 self.db.execute(f"DELETE FROM {table} WHERE run=? AND source=?", (token, source))
 
     @staticmethod
-    def _claim(name, arguments, tools):
+    def _claim(name, arguments, tools, cwd=None):
         """What a call may touch: nothing (a read, a search, `ls`), one file (an edit or
         write), or anything (a shell command, a test run, a tool we don't know)."""
         if name not in tools:
@@ -283,7 +283,9 @@ class HookQueue:
             return None, None
         path = arguments.get("file_path")
         if capability in FILE_CHANGE and isinstance(path, str) and path:
-            return "file", path
+            target = workspace.edit_target(path, cwd)
+            if target is not None:
+                return "file", target
         return "any", None
 
     def gap(self, run, reason):
@@ -478,7 +480,7 @@ class HookQueue:
                 # Reads overlap anything, and edits to different files overlap each other.
                 # Two commands at once, or two edits of one file, leave the order unknown.
                 # A command alongside edits is kept, but can't prove the tests passed.
-                kind, path = self._claim(name, payload.get("tool_input"), tools)
+                kind, path = self._claim(name, payload.get("tool_input"), tools, payload.get("cwd"))
                 if kind:
                     self._drop_refused(token, payload.get("transcript_path"))
                 rivals = (
@@ -490,7 +492,9 @@ class HookQueue:
                     else []
                 )
                 for rival in rivals:
-                    if kind == rival["kind"] and (kind == "any" or path == rival["path"]):
+                    if kind == rival["kind"] and (
+                        kind == "any" or workspace.overlapping_paths(path, rival["path"])
+                    ):
                         self.gap(token, "parallel_tool_dependencies_unknown")
                     elif kind == "any":
                         self.db.execute(

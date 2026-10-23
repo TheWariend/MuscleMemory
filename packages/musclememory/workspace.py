@@ -48,6 +48,34 @@ def project_root(cwd):
         current = parent
 
 
+def edit_target(path, cwd):
+    """Canonical local target for comparing concurrent edits, or unknown."""
+    if not isinstance(path, str) or not path:
+        return None
+    if not os.path.isabs(path):
+        if not isinstance(cwd, str) or not os.path.isabs(cwd):
+            return None
+        path = os.path.join(cwd, path)
+    try:
+        return os.path.realpath(path)
+    except (OSError, ValueError, RuntimeError):
+        return None
+
+
+def overlapping_paths(left, right):
+    """Compare aliases conservatively, including claims from older hook versions."""
+    if not all(isinstance(path, str) and os.path.isabs(path) for path in (left, right)):
+        return True
+    # Case folding can conservatively serialize distinct files on Linux, but
+    # cannot miss aliases on a case-insensitive filesystem, including new files.
+    if left.casefold() == right.casefold():
+        return True
+    try:
+        return os.path.samefile(left, right)
+    except (OSError, ValueError):
+        return False
+
+
 def ignored(path):
     parts = path.split("/")
     return (

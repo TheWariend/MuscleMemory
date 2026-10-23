@@ -425,7 +425,8 @@ SIGIR 2009), MiniLM sentence embeddings
   commits them, or leaves them as they were, does not register as a code change.
 - Conflicting parallel actions, or a missing "tool finished" event for a potentially
   mutating action, prevent learning. Parallel reads are supported. Concurrent edits
-  require distinct explicit `file_path` values; concurrent Codex `apply_patch` calls
+  require explicit `file_path` targets resolving to different files; aliases are
+  treated as the same target. Concurrent Codex `apply_patch` calls
   still block learning because their targets are supplied as patch text.
 - Custom agents built on the SDKs are learned from only when their code reports success;
   the Claude Code, Codex and Cursor hooks and CleanSlate decide this automatically.

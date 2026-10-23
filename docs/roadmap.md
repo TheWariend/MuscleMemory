@@ -69,7 +69,8 @@
 
 - Sessions with conflicting parallel actions, or a missing "tool finished" event
   for a potentially mutating action, are kept but not learned from. Parallel reads
-  are supported. Concurrent edits require distinct explicit `file_path` values;
+  are supported. Concurrent edits require explicit `file_path` targets that resolve
+  to different files;
   concurrent Codex `apply_patch` calls still block learning.
 - A shell command counts as a code change when it changes files that differ from
   version control (or, outside git, any file in the project). Changes that leave the
