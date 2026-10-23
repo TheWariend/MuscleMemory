@@ -51,8 +51,10 @@ Give Codex a task, then:
 
 - When Codex applies a patch through a shell heredoc, it can send "tool started"
   without "tool finished". That session is marked incomplete and not learned from.
-- Parallel reads and edits to different files are supported. Overlapping commands,
-  or edits to the same file, leave dependencies unknown and block learning.
+- Parallel reads are supported. Concurrent edits are supported only when each
+  tool supplies a distinct `file_path`. Codex `apply_patch` supplies patch text
+  instead, so concurrent patches still block learning. Overlapping commands or
+  edits to the same file also leave dependencies unknown.
 
 ## Remove it
 

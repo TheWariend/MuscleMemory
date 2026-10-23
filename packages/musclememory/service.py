@@ -359,13 +359,7 @@ class MemoryService:
                     namespace=request.visibility_scope,
                     intent=first.intent_text,
                     runtime=request.runtime_profile.model_dump(mode="json"),
-                    # A queued intent happened before delivery. Keep its original
-                    # start for Activity; a future client clock cannot pin a run.
-                    created_at=min(
-                        utcnow(), first.occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
-                    )
-                    if first.occurred_at
-                    else utcnow(),
+                    created_at=utcnow(),
                     expires_at=utcnow() + timedelta(days=self.settings.trace_retention_days),
                 )
                 session.add(run)
@@ -419,11 +413,6 @@ class MemoryService:
                         raise DomainError(
                             "intent_conflict", "Intent must match the execution and appear first"
                         )
-                    if event.kind == "intent" and event.occurred_at:
-                        run.created_at = min(
-                            run.created_at,
-                            event.occurred_at.astimezone(timezone.utc).replace(tzinfo=None),
-                        )
                     if event.kind == "tool":
                         if (
                             request.runtime_profile.bindings.get(event.capability)
@@ -454,6 +443,13 @@ class MemoryService:
                     by_id[event.event_id] = event
                     next_sequence += 1
                     accepted += 1
+                    if event.kind == "intent" and event.occurred_at:
+                        # Only accepted events can change Activity metadata. A
+                        # future client clock cannot move the start forward.
+                        run.created_at = min(
+                            run.created_at,
+                            event.occurred_at.astimezone(timezone.utc).replace(tzinfo=None),
+                        )
                     if event.kind == "completion":
                         if not event.capture_complete:
                             run.status = "incomplete"
@@ -1424,6 +1420,7 @@ class MemoryService:
             events = self._events(session, run)
             response = events[-1].response if events and events[-1].kind == "completion" else None
             reason = response.get("reason") if isinstance(response, dict) else None
+            gaps = response.get("capture_gaps") if isinstance(response, dict) else None
             return {
                 "run_token": run.run_token,
                 "intent_text": run.intent,
@@ -1431,6 +1428,9 @@ class MemoryService:
                 "runtime_profile": run.runtime,
                 "events": [e.model_dump(mode="json") for e in events],
                 "capture_reason": reason if isinstance(reason, str) else None,
+                "capture_gaps": gaps
+                if isinstance(gaps, list) and all(isinstance(gap, str) for gap in gaps)
+                else None,
             }
 
     def delete_memory(self, principal, token, kind="procedure"):

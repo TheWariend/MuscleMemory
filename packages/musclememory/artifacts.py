@@ -127,6 +127,13 @@ def command_parts(command):
 LOOKING = {"status", "diff", "log", "show", "ls-files"}
 
 
+def inspection_program(word):
+    """Project-relative executables cannot qualify merely by their basename."""
+    if "/" in word and posixpath.dirname(word) not in {"/bin", "/usr/bin"}:
+        return None
+    return posixpath.basename(word)
+
+
 def inspection_only(arguments, capability=""):
     """A shell command that only looks around: reading, listing, git status/diff/log."""
     command = arguments.get("command")
@@ -136,15 +143,30 @@ def inspection_only(arguments, capability=""):
         return False
     try:
         outer = shlex.split(command)
-        if len(outer) >= 3 and posixpath.basename(outer[0]) in {"sh", "bash", "zsh"}:
+        if len(outer) >= 3 and inspection_program(outer[0]) in {"sh", "bash", "zsh"}:
             if outer[-2] in {"-c", "-lc"}:
                 command = outer[-1]
     except ValueError:
         return False
     # Discarding or merging output writes nothing; any other redirect may.
     command = re.sub(r"\d*>\s*/dev/null(?=\s|[|;&]|$)|\d*>&\d+(?=\s|[|;&]|$)", " ", command)
-    if any(char in command for char in ">`$<#"):
+    if any(char in command for char in ">`$<"):
         return False
+    # A quoted hash is search text. Unquoted comments remain conservative: their
+    # contents must not make the lexer hide a command on the following line.
+    quote, escaped = None, False
+    for char in command:
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if char == quote:
+                quote = None
+        elif char in {"'", '"'}:
+            quote = char
+        elif char == "#":
+            return False
     # Shell operators inside quotes are arguments, e.g. rg 'foo|bar'. Preserve
     # actual newlines as separators so a following writer cannot hide in a read.
     try:
@@ -172,7 +194,7 @@ def inspection_only(arguments, capability=""):
     for words in pieces:
         if not words:
             return False
-        name = posixpath.basename(words[0])
+        name = inspection_program(words[0])
         # Only sed's common print-range form is known to be read-only. Other
         # scripts can write files or execute programs without using -i.
         if name == "sed" and not (

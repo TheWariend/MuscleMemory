@@ -58,6 +58,8 @@ def repair(apply=False):
                     rate_limit=False,
                 )
                 queue_path = Path(hook["state_dir"]) / "hooks.sqlite"
+                if not queue_path.exists() and not queue_path.is_symlink():
+                    continue
                 private_file(queue_path)
                 with sqlite3.connect(queue_path.as_uri() + "?mode=ro", uri=True) as queue:
                     queue.row_factory = sqlite3.Row

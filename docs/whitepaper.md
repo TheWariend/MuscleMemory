@@ -423,8 +423,10 @@ SIGIR 2009), MiniLM sentence embeddings
 
 - Shell edits are seen through version control: a command that changes files and then
   commits them, or leaves them as they were, does not register as a code change.
-- Sessions with parallel tool calls, or a missing "tool finished" event, are kept but not
-  learned from.
+- Conflicting parallel actions, or a missing "tool finished" event for a potentially
+  mutating action, prevent learning. Parallel reads are supported. Concurrent edits
+  require distinct explicit `file_path` values; concurrent Codex `apply_patch` calls
+  still block learning because their targets are supplied as patch text.
 - Custom agents built on the SDKs are learned from only when their code reports success;
   the Claude Code, Codex and Cursor hooks and CleanSlate decide this automatically.
 - The benchmarks cover three controlled tasks, and the Claude Code run has one session

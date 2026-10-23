@@ -56,6 +56,7 @@ export type RunEvent = {
 export type RunDetail = {
   run_token: string; intent_text: string; status: string; events: RunEvent[];
   capture_reason?: string | null;
+  capture_gaps?: string[] | null;
   runtime_profile: {agent_name: string; bindings: Record<string, string>; environment: Record<string, string>; permissions: string[]};
 };
 export type RecallCandidate = {

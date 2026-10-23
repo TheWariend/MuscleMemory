@@ -79,7 +79,7 @@ function SessionSheet({token, onClose}: {token?: string; onClose: () => void}) {
 
   const tools = detail?.events.filter(e => e.kind === 'tool') ?? [];
   const status = detail ? sessionStatus(detail.status) : undefined;
-  const issues = detail ? sessionIssues(detail.status, detail.capture_reason) : [];
+  const issues = detail ? sessionIssues(detail.status, detail.capture_reason, detail.capture_gaps) : [];
   return <Sheet open={Boolean(token)} onClose={onClose} label="Session">
     <div className="sheet-head">
       <div className="sheet-title">

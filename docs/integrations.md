@@ -97,16 +97,19 @@ For older hook queues with sessions stuck **In progress**, run:
 
 ```sh
 musclememory hooks repair --client claude --config ~/.musclememory/hooks/claude.json
+musclememory hooks repair --client codex --config ~/.musclememory/hooks/codex.json
+musclememory hooks repair --client cursor --config ~/.musclememory/hooks/cursor.json
 ```
 
-Use `--client codex` and `codex.json` for Codex. This closes ended turns and turns
+These commands close ended turns and turns
 superseded by a newer prompt in the same session, then delivers pending events.
 It preserves existing events, never infers success, and leaves the latest open
 turn in each session alone. Delivery can be retried with `hooks flush`.
 
 New native and SDK recordings preserve the original start time when uploaded
-after an outage. For a local SQLite installation with older backlog records that
-already show their upload time in Activity, preview timestamp recovery with:
+after an outage. Timestamp recovery for older local SQLite backlog records is a
+source-checkout utility, not part of the pip/pipx distribution. From the repository
+root of a checkout installed with `pip install -e .`, preview recovery with:
 
 ```sh
 python scripts/repair_activity_timestamps.py

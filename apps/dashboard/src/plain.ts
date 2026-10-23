@@ -44,18 +44,19 @@ const outcomeIssues: Record<string, string> = {
 };
 
 /** Explain capture diagnostics without exposing internal codes in the session view. */
-export function sessionIssues(status: string, reason?: string | null): string[] {
+export function sessionIssues(status: string, reason?: string | null, capturedGaps?: string[] | null): string[] {
   if (status !== 'incomplete' && status !== 'unverified') return [];
   const fallback = status === 'unverified'
     ? 'The session ended without a confirmed task result.'
     : 'Some actions could not be recorded reliably.';
-  if (!reason) return [fallback];
-  const gaps = reason.match(/^Capture gaps:\s*(.*)$/i);
+  const legacyGaps = reason?.match(/^Capture gaps:\s*(.*)$/i);
+  const gaps = capturedGaps?.length ? capturedGaps : legacyGaps?.[1].split(',');
   if (!gaps) {
+    if (!reason) return [fallback];
     const outcome = reason.trim();
     return [Object.hasOwn(outcomeIssues, outcome) ? outcomeIssues[outcome] : fallback];
   }
-  return [...new Set(gaps[1].split(',').map(code => {
+  return [...new Set(gaps.map(code => {
     const issue = code.trim();
     if (issue.startsWith('unmapped_tool:')) return 'One of the tools used in this session is not supported by the recorder.';
     return Object.hasOwn(captureIssues, issue) ? captureIssues[issue] : fallback;

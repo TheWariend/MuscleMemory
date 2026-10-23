@@ -87,6 +87,9 @@ On a completion event, `capture_complete: false` closes the run as `incomplete`.
 Otherwise, `outcome_verified: false` closes it as `unverified`; a complete recording
 does not establish task success. Verified completions use their `success` or
 `failure` status. Neither incomplete nor unverified completions can prove learning.
+Run details expose `capture_reason` and, when recorded, a structured `capture_gaps`
+array. Consumers should prefer the array over parsing the human-readable reason;
+older recordings may only contain the reason string.
 
 Python and TypeScript observation wrappers use this same event contract.
 `$mm_capture_omitted` marks unsupported/oversized captured data; steps with omitted

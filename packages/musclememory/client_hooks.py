@@ -764,7 +764,8 @@ class HookQueue:
         ]
 
     def _finish_incomplete(self, token, reason):
-        if self.db.execute("SELECT closed FROM runs WHERE token=?", (token,)).fetchone()[0]:
+        run = self.db.execute("SELECT closed,gaps FROM runs WHERE token=?", (token,)).fetchone()
+        if run["closed"]:
             return
         self.append(
             token,
@@ -773,7 +774,7 @@ class HookQueue:
                 "kind": "completion",
                 "status": "failure",
                 "capture_complete": False,
-                "response": {"reason": reason},
+                "response": {"reason": reason, "capture_gaps": json.loads(run["gaps"])},
             },
         )
         self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
