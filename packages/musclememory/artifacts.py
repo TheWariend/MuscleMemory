@@ -176,7 +176,9 @@ def inspection_only(arguments, capability=""):
         # Only sed's common print-range form is known to be read-only. Other
         # scripts can write files or execute programs without using -i.
         if name == "sed" and not (
-            len(words) >= 4 and words[1] == "-n" and re.fullmatch(r"\d+(?:,\d+)?p", words[2])
+            len(words) >= 4
+            and words[1] == "-n"
+            and re.fullmatch(r"\d+(?:,\d+)?p", words[2])
             and not any(word.startswith("-") for word in words[3:])
         ):
             return False
@@ -185,8 +187,15 @@ def inspection_only(arguments, capability=""):
         ):
             return False
         if name == "find" and {
-            "-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0",
-            "-fprintf", "-fls",
+            "-delete",
+            "-exec",
+            "-execdir",
+            "-ok",
+            "-okdir",
+            "-fprint",
+            "-fprint0",
+            "-fprintf",
+            "-fls",
         } & set(words):
             return False
         looking = name == "git" and len(words) > 1 and words[1] in LOOKING

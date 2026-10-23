@@ -29,8 +29,15 @@ def main():
     hooks.add_argument(
         "action",
         choices=[
-            "install", "receive", "list", "flush", "repair", "attest", "reconcile",
-            "learn", "purge",
+            "install",
+            "receive",
+            "list",
+            "flush",
+            "repair",
+            "attest",
+            "reconcile",
+            "learn",
+            "purge",
         ],
     )
     hooks.add_argument("--client", choices=["claude", "codex", "cursor", "all"], default="claude")

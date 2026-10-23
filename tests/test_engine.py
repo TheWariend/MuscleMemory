@@ -33,19 +33,33 @@ def test_unverified_completion_cannot_grant_learning(service, principal, status)
     service.observe(
         principal,
         ObserveInput(
-            run_token="unverified", runtime_profile=PROFILE,
-            visibility_scope="team", event_batch=events,
+            run_token="unverified",
+            runtime_profile=PROFILE,
+            visibility_scope="team",
+            event_batch=events,
         ),
     )
     assert service.get_run(principal, "unverified")["status"] == "unverified"
     with pytest.raises(DomainError, match="successful closed trace"):
-        service.learn(principal, LearnInput(
-            run_token="unverified",
-            completion_proof={"succeeded": True, "evidence_event_ids": ["read"], "summary": "ok"},
-        ))
+        service.learn(
+            principal,
+            LearnInput(
+                run_token="unverified",
+                completion_proof={
+                    "succeeded": True,
+                    "evidence_event_ids": ["read"],
+                    "summary": "ok",
+                },
+            ),
+        )
     with pytest.raises(DomainError, match="successful completion"):
-        compile_trace("task", [ExecutionEvent.model_validate(e) for e in events],
-                      LearningPolicy(), "unverified", {})
+        compile_trace(
+            "task",
+            [ExecutionEvent.model_validate(e) for e in events],
+            LearningPolicy(),
+            "unverified",
+            {},
+        )
 
 
 def test_learning_validation_and_cross_agent_portability(service, principal):

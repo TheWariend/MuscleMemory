@@ -63,15 +63,31 @@ DEFAULT_TOOLS = {
 # task, not actions to teach. Keep this an exact allowlist: an unknown MCP tool
 # may change project files or external state. Explicit user mappings take priority.
 CODEX_CONTEXT_TOOLS = {
-    "webrun", "view_image", "clocksleep", "request_user_input", "request_user_input_async",
+    "webrun",
+    "view_image",
+    "clocksleep",
+    "request_user_input",
+    "request_user_input_async",
     "update_plan",
 } | {
     f"mcp__codex_apps__github__{name}"
     for name in (
-        "fetch", "fetch_file", "fetch_issue", "fetch_issue_comments", "fetch_pr_comments",
-        "fetch_workflow_run_jobs", "search", "search_issues", "search_prs", "search_commits",
-        "search_branches", "compare_commits", "list_pr_changed_filenames",
-        "list_repositories_by_affiliation", "list_repositories", "list_recent_issues",
+        "fetch",
+        "fetch_file",
+        "fetch_issue",
+        "fetch_issue_comments",
+        "fetch_pr_comments",
+        "fetch_workflow_run_jobs",
+        "search",
+        "search_issues",
+        "search_prs",
+        "search_commits",
+        "search_branches",
+        "compare_commits",
+        "list_pr_changed_filenames",
+        "list_repositories_by_affiliation",
+        "list_repositories",
+        "list_recent_issues",
     )
 }
 
@@ -378,10 +394,17 @@ class HookQueue:
                             started,
                         ),
                     )
-                    self.append(token, "intent", {
-                        "kind": "intent", "intent_text": prompt[:8000],
-                        "occurred_at": datetime.fromtimestamp(started, timezone.utc).isoformat(),
-                    })
+                    self.append(
+                        token,
+                        "intent",
+                        {
+                            "kind": "intent",
+                            "intent_text": prompt[:8000],
+                            "occurred_at": datetime.fromtimestamp(
+                                started, timezone.utc
+                            ).isoformat(),
+                        },
+                    )
                 else:
                     token = row["token"]
                 return token, "prompt"
@@ -574,9 +597,7 @@ class HookQueue:
                 failed |= response.get("isError") is True or response.get("success") is False
                 failed |= response.get("exitCode", response.get("exit_code", 0)) not in (None, 0)
             if client == "codex" and name == "Bash":
-                code = (
-                    re.search(r"(?:Process exited with code|Exit code:)\s*(-?\d+)", output)
-                )
+                code = re.search(r"(?:Process exited with code|Exit code:)\s*(-?\d+)", output)
                 failed |= bool(code and int(code[1]) != 0)
                 explicit = isinstance(response, dict) and isinstance(
                     response.get("exitCode", response.get("exit_code")), int
@@ -731,12 +752,16 @@ class HookQueue:
 
     def pending_endings(self, token):
         """Retry closed turns in this session without uploading unrelated work."""
-        return [row[0] for row in self.db.execute(
-            "SELECT r.token FROM runs r JOIN runs current ON r.session=current.session "
-            "AND r.identity=current.identity WHERE current.token=? AND r.identity=? "
-            "AND r.closed=1 AND EXISTS (SELECT 1 FROM events e WHERE e.run=r.token AND ack=0) "
-            "ORDER BY r.created LIMIT 8", (token, self.identity),
-        )]
+        return [
+            row[0]
+            for row in self.db.execute(
+                "SELECT r.token FROM runs r JOIN runs current ON r.session=current.session "
+                "AND r.identity=current.identity WHERE current.token=? AND r.identity=? "
+                "AND r.closed=1 AND EXISTS (SELECT 1 FROM events e WHERE e.run=r.token AND ack=0) "
+                "ORDER BY r.created LIMIT 8",
+                (token, self.identity),
+            )
+        ]
 
     def _finish_incomplete(self, token, reason):
         if self.db.execute("SELECT closed FROM runs WHERE token=?", (token,)).fetchone()[0]:
@@ -792,13 +817,18 @@ class HookQueue:
                 "AND (r.ended=1 OR EXISTS (SELECT 1 FROM runs newer WHERE "
                 "newer.identity=r.identity AND newer.session=r.session "
                 "AND newer.created>r.created)) "
-                "ORDER BY r.created", (self.identity,),
+                "ORDER BY r.created",
+                (self.identity,),
             ).fetchall()
             for row in rows:
-                self._end_unverified(row["token"], (
-                    "Session ended without a verified task outcome" if row["ended"] else
-                    "A new prompt arrived before this turn recorded an outcome"
-                ))
+                self._end_unverified(
+                    row["token"],
+                    (
+                        "Session ended without a verified task outcome"
+                        if row["ended"]
+                        else "A new prompt arrived before this turn recorded an outcome"
+                    ),
+                )
             return [row["token"] for row in rows]
 
     def close_incomplete(self, token, reason):
@@ -827,9 +857,13 @@ class HookQueue:
                 return prior["derived"]
             source = token
             if run["closed"]:
-                events = [json.loads(row[0]) for row in self.db.execute(
-                    "SELECT payload FROM events WHERE run=? ORDER BY sequence", (token,),
-                )]
+                events = [
+                    json.loads(row[0])
+                    for row in self.db.execute(
+                        "SELECT payload FROM events WHERE run=? ORDER BY sequence",
+                        (token,),
+                    )
+                ]
                 completion = events[-1]
                 if completion.get("outcome_verified", True):
                     if completion["status"] != ("success" if succeeded else "failure"):
@@ -841,20 +875,32 @@ class HookQueue:
                 self.db.execute(
                     "INSERT INTO runs(token,identity,session,turn,scope,profile,ended,created) "
                     "VALUES (?,?,?,?,?,?,1,?)",
-                    (token, self.identity, digest(["attestation", token]), token,
-                     run["scope"], run["profile"], time.time()),
+                    (
+                        token,
+                        self.identity,
+                        digest(["attestation", token]),
+                        token,
+                        run["scope"],
+                        run["profile"],
+                        time.time(),
+                    ),
                 )
                 for index, event in enumerate(events[:-1]):
                     event.pop("sequence")
                     event.pop("event_id")
                     self.append(token, f"attested-{index}", event)
-                self.db.execute("INSERT INTO attestations VALUES (?,?,?,?)",
-                                (self.identity, source, token, int(succeeded)))
+                self.db.execute(
+                    "INSERT INTO attestations VALUES (?,?,?,?)",
+                    (self.identity, source, token, int(succeeded)),
+                )
             self.append(
                 token,
                 "completion",
-                {"kind": "completion", "status": "success" if succeeded else "failure",
-                 "response": {"verifier": "human_attestation", "source_run": source}},
+                {
+                    "kind": "completion",
+                    "status": "success" if succeeded else "failure",
+                    "response": {"verifier": "human_attestation", "source_run": source},
+                },
             )
             self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
             return token
@@ -1298,10 +1344,16 @@ def hooks_command(arguments):
                         raise
                     retry_after = error.response.headers.get("Retry-After", "60")
                     break  # Closures are durable; retry without rewriting any events.
-            print(json.dumps({
-                "closed_runs": len(repaired), "delivered_events": delivered,
-                "pending_runs": len(queue.pending()), "retry_after_seconds": retry_after,
-            }))
+            print(
+                json.dumps(
+                    {
+                        "closed_runs": len(repaired),
+                        "delivered_events": delivered,
+                        "pending_runs": len(queue.pending()),
+                        "retry_after_seconds": retry_after,
+                    }
+                )
+            )
         elif arguments.action == "attest":
             token = queue.attest(arguments.run, arguments.succeeded)
             for pending in dict.fromkeys([arguments.run, token]):

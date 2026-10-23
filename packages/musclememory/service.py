@@ -363,7 +363,9 @@ class MemoryService:
                     # start for Activity; a future client clock cannot pin a run.
                     created_at=min(
                         utcnow(), first.occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
-                    ) if first.occurred_at else utcnow(),
+                    )
+                    if first.occurred_at
+                    else utcnow(),
                     expires_at=utcnow() + timedelta(days=self.settings.trace_retention_days),
                 )
                 session.add(run)

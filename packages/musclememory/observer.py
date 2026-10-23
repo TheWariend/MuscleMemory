@@ -77,7 +77,8 @@ class ObservedRun:
             )
         try:
             self._emit(
-                kind="intent", intent_text=intent_text,
+                kind="intent",
+                intent_text=intent_text,
                 occurred_at=datetime.now(timezone.utc).isoformat(),
             )
         except BaseException:

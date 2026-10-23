@@ -54,7 +54,8 @@ def repair(apply=False):
                 if str(client.http.base_url).rstrip("/") != local["url"].rstrip("/"):
                     continue
                 principal = service.authenticate(
-                    client.http.headers["authorization"][7:], rate_limit=False,
+                    client.http.headers["authorization"][7:],
+                    rate_limit=False,
                 )
                 queue_path = Path(hook["state_dir"]) / "hooks.sqlite"
                 private_file(queue_path)
@@ -62,7 +63,8 @@ def repair(apply=False):
                     queue.row_factory = sqlite3.Row
                     rows = queue.execute(
                         "SELECT r.*,e.payload FROM runs r JOIN events e ON e.run=r.token "
-                        "AND e.sequence=0 WHERE r.identity=?", (client.capture_identity,),
+                        "AND e.sequence=0 WHERE r.identity=?",
+                        (client.capture_identity,),
                     ).fetchall()
                 with service.db.transaction() as session:
                     for row in rows:
@@ -92,15 +94,22 @@ def repair(apply=False):
                         if apply:
                             run.created_at = started
                             service.audit(
-                                session, principal, run.namespace,
-                                "repair_capture_time", run.run_token,
+                                session,
+                                principal,
+                                run.namespace,
+                                "repair_capture_time",
+                                run.run_token,
                             )
                     if apply:
                         session.commit()
             finally:
                 client.close()
-        return {"applied": apply, "corrected_runs": repaired,
-                "skipped_mismatches": skipped, "backup": backup}
+        return {
+            "applied": apply,
+            "corrected_runs": repaired,
+            "skipped_mismatches": skipped,
+            "backup": backup,
+        }
     finally:
         service.db.engine.dispose()
 

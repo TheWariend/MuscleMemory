@@ -1142,13 +1142,16 @@ def test_documentation_edits_after_passing_tests_keep_the_session_verified(
     assert len(service.listing(principal, "team", "procedures")["items"]) == 1
 
 
-@pytest.mark.parametrize("test_output", [
-    {"stdout": "Ran 4 tests\n\nOK"},
-    {"stderr": "Ran 4 tests\n\nOK"},
-    {"output": "Ran 4 tests\n\nOK"},
-    {"aggregated_output": "Ran 4 tests\n\nOK"},
-    {"content": [{"type": "text", "text": "Ran 4 tests\n\nOK"}]},
-])
+@pytest.mark.parametrize(
+    "test_output",
+    [
+        {"stdout": "Ran 4 tests\n\nOK"},
+        {"stderr": "Ran 4 tests\n\nOK"},
+        {"output": "Ran 4 tests\n\nOK"},
+        {"aggregated_output": "Ran 4 tests\n\nOK"},
+        {"content": [{"type": "text", "text": "Ran 4 tests\n\nOK"}]},
+    ],
+)
 def test_structured_codex_test_summaries_are_verified(
     codex_hook_host, service, principal, test_output
 ):
@@ -1158,10 +1161,13 @@ def test_structured_codex_test_summaries_are_verified(
     assert len(service.listing(principal, "team", "procedures")["items"]) == 1
 
 
-@pytest.mark.parametrize("test_output", [
-    {"stderr": "Ran 4 tests\n\nFAILED (failures=1)"},
-    {"metadata": "Ran 4 tests\n\nOK"},
-])
+@pytest.mark.parametrize(
+    "test_output",
+    [
+        {"stderr": "Ran 4 tests\n\nFAILED (failures=1)"},
+        {"metadata": "Ran 4 tests\n\nOK"},
+    ],
+)
 def test_failed_or_unknown_structured_results_do_not_teach(
     codex_hook_host, service, principal, test_output
 ):
@@ -1194,46 +1200,78 @@ def test_context_lookups_and_parallel_reads_allow_real_fix_learning_and_reuse(
         return run_hook(config, "codex", payload(event, turn_id=turn, cwd=str(repo), **fields))
 
     def test_run(turn, source, expected):
-        fields = {"tool_name": "Bash", "tool_use_id": source,
-                  "tool_input": {"command": command}}
+        fields = {"tool_name": "Bash", "tool_use_id": source, "tool_input": {"command": command}}
         hook("PreToolUse", turn, **fields)
         result = subprocess.run(command, shell=True, cwd=repo, capture_output=True, text=True)
         assert (result.returncode == 0) is expected, result.stderr
-        hook("PostToolUse", turn, **fields,
-             tool_response={"stdout": result.stdout, "stderr": result.stderr})
+        hook(
+            "PostToolUse",
+            turn,
+            **fields,
+            tool_response={"stdout": result.stdout, "stderr": result.stderr},
+        )
 
     for index in range(3):
         turn = f"actual-{index}"
         (repo / "app/rounding.py").write_text("def cents(x):\n    return int(x)\n")
         hook("UserPromptSubmit", turn, prompt="Fix rounding in app/rounding.py")
         # These are the native tool names found in real incomplete captures.
-        for name in ("webrun", "view_image", "request_user_input_async",
-                     "mcp__codex_apps__github__fetch_file"):
+        for name in (
+            "webrun",
+            "view_image",
+            "request_user_input_async",
+            "mcp__codex_apps__github__fetch_file",
+        ):
             fields = {"tool_name": name, "tool_use_id": f"{turn}-{name}"}
             hook("PreToolUse", turn, **fields)
             hook("PostToolUse", turn, **fields, tool_response={"result": "context"})
-        readers = [("numbered", "nl -ba app/rounding.py"),
-                   ("search", "rg -n 'cents|round' app/rounding.py")]
+        readers = [
+            ("numbered", "nl -ba app/rounding.py"),
+            ("search", "rg -n 'cents|round' app/rounding.py"),
+        ]
         for source, read in readers:
-            hook("PreToolUse", turn, tool_name="Bash", tool_use_id=source,
-                 tool_input={"command": read})
+            hook(
+                "PreToolUse",
+                turn,
+                tool_name="Bash",
+                tool_use_id=source,
+                tool_input={"command": read},
+            )
         for source, read in readers:
             result = subprocess.run(read, shell=True, cwd=repo, capture_output=True, text=True)
-            hook("PostToolUse", turn, tool_name="Bash", tool_use_id=source,
-                 tool_input={"command": read}, tool_response=result.stdout)
+            hook(
+                "PostToolUse",
+                turn,
+                tool_name="Bash",
+                tool_use_id=source,
+                tool_input={"command": read},
+                tool_response=result.stdout,
+            )
         test_run(turn, "red", False)
-        hook("PreToolUse", turn, tool_name="apply_patch", tool_use_id="edit",
-             tool_input={"input": patch})
+        hook(
+            "PreToolUse",
+            turn,
+            tool_name="apply_patch",
+            tool_use_id="edit",
+            tool_input={"input": patch},
+        )
         (repo / "app/rounding.py").write_text("def cents(x):\n    return round(x)\n")
-        hook("PostToolUse", turn, tool_name="apply_patch", tool_use_id="edit",
-             tool_input={"input": patch}, tool_response="Success. Updated app/rounding.py")
+        hook(
+            "PostToolUse",
+            turn,
+            tool_name="apply_patch",
+            tool_use_id="edit",
+            tool_input={"input": patch},
+            tool_response="Success. Updated app/rounding.py",
+        )
         test_run(turn, "green", True)
         hook("Stop", turn)
 
     [skill] = service.listing(principal, "team", "procedures")["items"]
     assert skill["successes"] == 2 and skill["needs_review"]
-    assert all(r["status"] == "success"
-               for r in service.listing(principal, "team", "runs")["items"])
+    assert all(
+        r["status"] == "success" for r in service.listing(principal, "team", "runs")["items"]
+    )
     service.approve(principal, skill["procedure_token"])
     (repo / "app/rounding.py").write_text("def cents(x):\n    return int(x)\n")
     output = hook("UserPromptSubmit", "fresh", prompt="Fix rounding in app/rounding.py")
@@ -1257,9 +1295,14 @@ def test_context_only_sessions_are_complete_but_unverified(
     assert service.listing(principal, "team", "procedures")["items"] == []
 
 
-@pytest.mark.parametrize("name", [
-    "mcp__codex_apps__github__create_commit", "unknown__fetch_file", "my_webrun",
-])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "mcp__codex_apps__github__create_commit",
+        "unknown__fetch_file",
+        "my_webrun",
+    ],
+)
 def test_unknown_actions_still_block_learning(codex_hook_host, service, principal, name):
     config, *_ = codex_hook_host
     run_hook(config, "codex", payload("UserPromptSubmit", prompt="Fix rounding"))
