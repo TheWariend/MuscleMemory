@@ -39,11 +39,14 @@ Each pull request runs these checks, including contributions from forks:
   A JUnit report is kept as a workflow artifact for seven days.
 - **frontend:** dashboard and TypeScript SDK builds, plus SDK tests.
 - **secrets:** Gitleaks scans the commits introduced by the pull request. Findings
-  are redacted in the logs. A manual run of the Secret scan workflow scans all
-  available history.
+  are redacted in the logs. The scanner uses a digest-pinned image and built-in
+  rules. Repository config, ignore files, and inline `gitleaks:allow` comments
+  cannot suppress findings in CI. Ask a maintainer to review false positives.
+  A manual run of the Secret scan workflow scans all available history.
 
-New commits cancel older runs for the same pull request. These workflows use a
-read-only repository token and do not need project secrets.
+New commits cancel older runs for the same pull request. Secret scans for pushes
+to `main` run independently so that every pushed commit range is scanned. These
+workflows use a read-only repository token and do not need project secrets.
 
 Dependabot groups weekly GitHub Actions and Node dependency updates into pull
 requests. Python lockfile updates remain a maintainer task.

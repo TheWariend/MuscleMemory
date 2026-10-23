@@ -153,7 +153,7 @@ not every kind of work, and the Claude Code run is small. The hooks and CleanSla
 reports when a task succeeded.
 See the [roadmap](https://github.com/TheWariend/MuscleMemory/blob/main/docs/roadmap.md).
 
-Issues and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for
+Issues and pull requests are welcome. See [CONTRIBUTING.md](https://github.com/TheWariend/MuscleMemory/blob/main/CONTRIBUTING.md) for
 local checks and pull request automation. Please report security issues privately, as
 described in [SECURITY.md](https://github.com/TheWariend/MuscleMemory/blob/main/SECURITY.md).
 
