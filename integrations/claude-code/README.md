@@ -44,13 +44,17 @@ Give Claude Code a task, then:
   passing test matches the stored test command after normalization. Parameterized
   commands retain shape matching.
 - On `Stop`, a session with a passing test after its last code change is verified
-  and learned from. Otherwise it stays unverified. You can still confirm one by hand:
+  and learned from. Otherwise it closes as **Not verified** (or **Incomplete** when
+  capture has gaps). You can still confirm a complete recording by hand:
   `musclememory hooks attest --client claude --config ~/.musclememory/hooks/claude.json
   --run RUN_TOKEN --succeeded`.
+  The command returns a linked run token for the attested result and preserves the
+  original record. Use the returned token for `hooks learn`.
 
 ## Known limits
 
-- Parallel tool calls mark a session incomplete.
+- Overlapping changes with unknown dependencies mark a session incomplete.
+  Parallel reads and searches can be captured.
 - Plugin and MCP tools need a mapping under `"tools"` in
   `~/.musclememory/hooks/claude.json`; unmapped tools mark a gap.
 

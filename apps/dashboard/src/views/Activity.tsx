@@ -1,12 +1,12 @@
 import {useEffect, useMemo, useState} from 'react';
 import type {RunDetail, RunEvent, RunSummary} from '../api';
 import {ProviderLogo, providerOf} from '../logos';
-import {agentName, describeStep, sessionStatus} from '../plain';
+import {agentName, describeStep, sessionIssues, sessionStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {useWorkspace} from '../workspace';
 
-type Filter = 'all' | 'success' | 'failure' | 'recording';
-const filterLabels: Record<Filter, string> = {all: 'All', success: 'Succeeded', failure: 'Failed', recording: 'In progress'};
+type Filter = 'all' | 'success' | 'failure' | 'recording' | 'unverified' | 'incomplete';
+const filterLabels: Record<Filter, string> = {all: 'All', success: 'Succeeded', failure: 'Failed', recording: 'In progress', unverified: 'Not verified', incomplete: 'Capture incomplete'};
 
 export function Activity({selected}: {selected?: string}) {
   const {runs, loading, navigate} = useWorkspace();
@@ -25,6 +25,7 @@ export function Activity({selected}: {selected?: string}) {
       <Segmented label="Show" value={filter} onChange={setFilter} options={filters.map(f => ({value: f, label: filterLabels[f], count: count(f)}))}/>
       <SearchField value={query} onChange={setQuery} placeholder="Search tasks"/>
     </div>}
+    {list.length > 0 && <p className="muted">{list.length === 100 ? 'Showing the latest 100 sessions. ' : ''}Capture incomplete means actions could not be recorded reliably. It does not establish whether the task succeeded or failed.</p>}
     {!runs ? (loading ? <Skeleton/> : null)
       : !list.length ? <div className="card"><Empty icon="runs" title="No sessions yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>Sessions show up here once an agent is connected and starts working.</Empty></div>
       : !shown.length ? <div className="card"><Empty compact icon="search" title="No matches">Nothing matches{query && <> “{query}”</>}.</Empty></div>
@@ -78,6 +79,7 @@ function SessionSheet({token, onClose}: {token?: string; onClose: () => void}) {
 
   const tools = detail?.events.filter(e => e.kind === 'tool') ?? [];
   const status = detail ? sessionStatus(detail.status) : undefined;
+  const issues = detail ? sessionIssues(detail.status, detail.capture_reason, detail.capture_gaps) : [];
   return <Sheet open={Boolean(token)} onClose={onClose} label="Session">
     <div className="sheet-head">
       <div className="sheet-title">
@@ -91,6 +93,11 @@ function SessionSheet({token, onClose}: {token?: string; onClose: () => void}) {
       {error && <div role="alert" className="banner tone-bad"><Icon name="alert"/><span>{error}</span></div>}
       {!detail && !error && <Skeleton rows={5}/>}
       {detail && <div className="stack-sm">
+        {issues.length > 0 && <section className="sub">
+          <h3>Why no skill was learned</h3>
+          <ul className="bullets">{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
+          <p className="muted">Learning needs a reliable record of the actions and their results.</p>
+        </section>}
         <ol className="timeline">{tools.map((e, i) => <Step key={e.event_id} e={e} index={i}/>)}</ol>
         {!tools.length && <p className="muted">No steps recorded.</p>}
         {detail.status === 'recording' && <p className="muted live"><span className="status-dot pulse"/>Still running.</p>}

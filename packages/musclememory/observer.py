@@ -10,6 +10,7 @@ import inspect
 import json
 import threading
 import time
+from datetime import datetime, timezone
 from functools import wraps
 from uuid import uuid4
 
@@ -75,7 +76,11 @@ class ObservedRun:
                 spool_path, getattr(client, "capture_identity", None), metadata
             )
         try:
-            self._emit(kind="intent", intent_text=intent_text)
+            self._emit(
+                kind="intent",
+                intent_text=intent_text,
+                occurred_at=datetime.now(timezone.utc).isoformat(),
+            )
         except BaseException:
             self.close()
             raise

@@ -34,17 +34,28 @@ Give Codex a task, then:
 
 - Bash and `apply_patch` calls are recorded. Exit codes are read from Codex's
   "Process exited with code N" output.
+- Known context helpers (web search, image viewing, questions and supported GitHub
+  read operations) are omitted from coding skills. They do not create capture gaps.
+  Unknown tools still block learning; custom tool mappings take precedence.
 - Memory is added at the prompt, at most twice per session.
 - Codex's own background prompts, such as task suggestions, run in ephemeral threads
   without a transcript. They are not recorded and get no memory.
 - On `Stop`, a session with a passing test after its last patch is verified and
-  learned from. Otherwise it is closed as unverified and nothing is learned.
+  learned from. Test summaries are read from plain terminal output and structured
+  stdout/stderr or text content, even when Codex omits the exit code.
+- A complete session without a confirmed test after a code change is **Not
+  verified**. Missing actions or ambiguous ordering are **Incomplete**, with capture
+  reasons in the full record. Neither state counts as a successful fix.
 
 ## Known limits
 
 - When Codex applies a patch through a shell heredoc, it can send "tool started"
   without "tool finished". That session is marked incomplete and not learned from.
-- Parallel tool calls also mark a session incomplete.
+- Parallel reads are supported. Concurrent edits are supported only when each
+  tool supplies a `file_path` resolving to a different file. Aliased paths are
+  treated as the same target. Codex `apply_patch` supplies patch text
+  instead, so concurrent patches still block learning. Overlapping commands or
+  edits to the same file also leave dependencies unknown.
 
 ## Remove it
 

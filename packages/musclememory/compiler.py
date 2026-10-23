@@ -81,7 +81,13 @@ def compile_trace(
     run_token: str,
     proof: dict,
 ):
-    if not events or events[-1].kind != "completion" or events[-1].status != "success":
+    if (
+        not events
+        or events[-1].kind != "completion"
+        or events[-1].status != "success"
+        or not events[-1].capture_complete
+        or not events[-1].outcome_verified
+    ):
         raise DomainError("incomplete_trace", "A successful completion event must close the trace")
     for name, binding in policy.parameters.items():
         if not check_type(binding.observed_value, binding.definition.kind):

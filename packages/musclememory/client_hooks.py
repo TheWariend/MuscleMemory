@@ -15,9 +15,12 @@ import stat
 import sys
 import time
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 from uuid import uuid4
+
+import httpx
 
 from . import workspace
 from .artifacts import (
@@ -54,6 +57,38 @@ DEFAULT_TOOLS = {
         "Delete": ("filesystem.delete", "destructive"),
         "Shell": ("shell.execute", "destructive"),
     },
+}
+
+# Native client utilities and known read-only lookups are context for a coding
+# task, not actions to teach. Keep this an exact allowlist: an unknown MCP tool
+# may change project files or external state. Explicit user mappings take priority.
+CODEX_CONTEXT_TOOLS = {
+    "webrun",
+    "view_image",
+    "clocksleep",
+    "request_user_input",
+    "request_user_input_async",
+    "update_plan",
+} | {
+    f"mcp__codex_apps__github__{name}"
+    for name in (
+        "fetch",
+        "fetch_file",
+        "fetch_issue",
+        "fetch_issue_comments",
+        "fetch_pr_comments",
+        "fetch_workflow_run_jobs",
+        "search",
+        "search_issues",
+        "search_prs",
+        "search_commits",
+        "search_branches",
+        "compare_commits",
+        "list_pr_changed_filenames",
+        "list_repositories_by_affiliation",
+        "list_repositories",
+        "list_recent_issues",
+    )
 }
 
 
@@ -180,6 +215,9 @@ class HookQueue:
                 identity TEXT NOT NULL, run TEXT NOT NULL, derived TEXT NOT NULL,
                 fingerprint TEXT NOT NULL, events TEXT NOT NULL,
                 PRIMARY KEY(identity,run));
+            CREATE TABLE IF NOT EXISTS attestations (
+                identity TEXT NOT NULL, run TEXT NOT NULL, derived TEXT NOT NULL,
+                succeeded INTEGER NOT NULL, PRIMARY KEY(identity,run));
         """)
 
     def close(self):
@@ -231,7 +269,7 @@ class HookQueue:
                 self.db.execute(f"DELETE FROM {table} WHERE run=? AND source=?", (token, source))
 
     @staticmethod
-    def _claim(name, arguments, tools):
+    def _claim(name, arguments, tools, cwd=None):
         """What a call may touch: nothing (a read, a search, `ls`), one file (an edit or
         write), or anything (a shell command, a test run, a tool we don't know)."""
         if name not in tools:
@@ -245,7 +283,9 @@ class HookQueue:
             return None, None
         path = arguments.get("file_path")
         if capability in FILE_CHANGE and isinstance(path, str) and path:
-            return "file", path
+            target = workspace.edit_target(path, cwd)
+            if target is not None:
+                return "file", target
         return "any", None
 
     def gap(self, run, reason):
@@ -331,7 +371,18 @@ class HookQueue:
                 # Claude has no turn id. Every prompt starts a fresh recording, including
                 # repeated identical prompts; the previous trace remains unverified.
                 if not turn or not row:
+                    # A new prompt proves the previous turn is no longer active,
+                    # even when an interrupted client never emitted its Stop hook.
+                    for prior in self.db.execute(
+                        "SELECT token FROM runs WHERE identity=? AND session=? AND closed=0",
+                        (self.identity, session),
+                    ).fetchall():
+                        self._end_unverified(
+                            prior["token"],
+                            "A new prompt arrived before this turn recorded an outcome",
+                        )
                     token = str(uuid4())
+                    started = time.time()
                     self.db.execute(
                         "INSERT INTO runs(token,identity,session,turn,scope,profile,created) "
                         "VALUES (?,?,?,?,?,?,?)",
@@ -342,10 +393,20 @@ class HookQueue:
                             turn,
                             scope,
                             json.dumps(profile.model_dump(mode="json")),
-                            time.time(),
+                            started,
                         ),
                     )
-                    self.append(token, "intent", {"kind": "intent", "intent_text": prompt[:8000]})
+                    self.append(
+                        token,
+                        "intent",
+                        {
+                            "kind": "intent",
+                            "intent_text": prompt[:8000],
+                            "occurred_at": datetime.fromtimestamp(
+                                started, timezone.utc
+                            ).isoformat(),
+                        },
+                    )
                 else:
                     token = row["token"]
                 return token, "prompt"
@@ -359,6 +420,8 @@ class HookQueue:
                 self.gap(token, "configuration_changed")
                 return token, "configuration_changed"
             if event_name in {"Stop", "stop", "Interrupt", "SessionEnd", "sessionEnd"}:
+                if row["closed"]:
+                    return token, "ended"
                 # A refused or abandoned read never ran or changed nothing; only an
                 # unfinished change or command leaves the session's effects unknown.
                 self._drop_refused(token, payload.get("transcript_path"))
@@ -398,10 +461,7 @@ class HookQueue:
                     )
                     self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
                     return token, "failed"
-                if client == "codex":
-                    self._finish_incomplete(
-                        token, "Codex turn ended without externally verified outcome"
-                    )
+                self._finish_unverified(token)
                 return token, "ended"
             source = payload.get("tool_use_id")
             name = payload.get("tool_name")
@@ -410,6 +470,8 @@ class HookQueue:
                 return token, "capture_gap"
             if name and "musclememory_" in name:
                 return token, "memory_tool_skipped"
+            if client == "codex" and name not in tools and name in CODEX_CONTEXT_TOOLS:
+                return token, "context_tool_skipped"
             if event_name in {"PreToolUse", "preToolUse"}:
                 if self.db.execute(
                     "SELECT 1 FROM events WHERE run=? AND source=?", (token, source)
@@ -418,7 +480,7 @@ class HookQueue:
                 # Reads overlap anything, and edits to different files overlap each other.
                 # Two commands at once, or two edits of one file, leave the order unknown.
                 # A command alongside edits is kept, but can't prove the tests passed.
-                kind, path = self._claim(name, payload.get("tool_input"), tools)
+                kind, path = self._claim(name, payload.get("tool_input"), tools, payload.get("cwd"))
                 if kind:
                     self._drop_refused(token, payload.get("transcript_path"))
                 rivals = (
@@ -430,7 +492,9 @@ class HookQueue:
                     else []
                 )
                 for rival in rivals:
-                    if kind == rival["kind"] and (kind == "any" or path == rival["path"]):
+                    if kind == rival["kind"] and (
+                        kind == "any" or workspace.overlapping_paths(path, rival["path"])
+                    ):
                         self.gap(token, "parallel_tool_dependencies_unknown")
                     elif kind == "any":
                         self.db.execute(
@@ -530,17 +594,14 @@ class HookQueue:
                     response = json.loads(response)
                 except ValueError:
                     pass
+            output = workspace.output_text(response)
             failed = event_name in {"PostToolUseFailure", "postToolUseFailure"}
             outcome_verified = True
             if isinstance(response, dict):
                 failed |= response.get("isError") is True or response.get("success") is False
                 failed |= response.get("exitCode", response.get("exit_code", 0)) not in (None, 0)
             if client == "codex" and name == "Bash":
-                code = (
-                    re.search(r"(?:Process exited with code|Exit code:)\s*(-?\d+)", response)
-                    if isinstance(response, str)
-                    else None
-                )
+                code = re.search(r"(?:Process exited with code|Exit code:)\s*(-?\d+)", output)
                 failed |= bool(code and int(code[1]) != 0)
                 explicit = isinstance(response, dict) and isinstance(
                     response.get("exitCode", response.get("exit_code")), int
@@ -551,9 +612,7 @@ class HookQueue:
                 ):
                     # Codex hooks often send output without the exit code; a test
                     # runner's own summary line ("OK", "FAILED (...)") settles it.
-                    verdict = workspace.test_output_verdict(
-                        response if isinstance(response, str) else json.dumps(response)
-                    )
+                    verdict = workspace.test_output_verdict(output)
                     if verdict is not None:
                         outcome_verified, failed = True, failed or not verdict
                 if not outcome_verified:
@@ -566,15 +625,6 @@ class HookQueue:
                 and workspace.piped_test(command_parts(command), str(command))
             ):
                 # `tests | tail` exits with tail's status; trust the runner's own summary.
-                output = (
-                    response
-                    if isinstance(response, str)
-                    else "\n".join(
-                        str(response.get(key) or "") for key in ("stdout", "stderr", "output")
-                    )
-                    if isinstance(response, dict)
-                    else ""
-                )
                 verdict = workspace.test_output_verdict(output)
                 if verdict is False:
                     failed = True
@@ -704,8 +754,22 @@ class HookQueue:
             )
         ]
 
+    def pending_endings(self, token):
+        """Retry closed turns in this session without uploading unrelated work."""
+        return [
+            row[0]
+            for row in self.db.execute(
+                "SELECT r.token FROM runs r JOIN runs current ON r.session=current.session "
+                "AND r.identity=current.identity WHERE current.token=? AND r.identity=? "
+                "AND r.closed=1 AND EXISTS (SELECT 1 FROM events e WHERE e.run=r.token AND ack=0) "
+                "ORDER BY r.created LIMIT 8",
+                (token, self.identity),
+            )
+        ]
+
     def _finish_incomplete(self, token, reason):
-        if self.db.execute("SELECT closed FROM runs WHERE token=?", (token,)).fetchone()[0]:
+        run = self.db.execute("SELECT closed,gaps FROM runs WHERE token=?", (token,)).fetchone()
+        if run["closed"]:
             return
         self.append(
             token,
@@ -714,10 +778,63 @@ class HookQueue:
                 "kind": "completion",
                 "status": "failure",
                 "capture_complete": False,
+                "response": {"reason": reason, "capture_gaps": json.loads(run["gaps"])},
+            },
+        )
+        self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
+
+    def _finish_unverified(self, token, reason="No verified task outcome was recorded"):
+        """A complete recording without task proof is not a missing recording."""
+        run = self.db.execute("SELECT closed,gaps FROM runs WHERE token=?", (token,)).fetchone()
+        if run["closed"]:
+            return
+        gaps = json.loads(run["gaps"])
+        if set(gaps) - {"unverified_exit_status"}:
+            self._finish_incomplete(token, "Capture gaps: " + ", ".join(gaps))
+            return
+        self.append(
+            token,
+            "unverified-closure",
+            {
+                "kind": "completion",
+                "status": "failure",
+                "outcome_verified": False,
                 "response": {"reason": reason},
             },
         )
         self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
+
+    def _end_unverified(self, token, reason):
+        if self.db.execute("SELECT 1 FROM claims WHERE run=?", (token,)).fetchone():
+            self.gap(token, "unfinished_tool")
+        self.db.execute("DELETE FROM active WHERE run=?", (token,))
+        self.db.execute("UPDATE runs SET ended=1 WHERE token=?", (token,))
+        self._finish_unverified(token, reason)
+
+    def repair_endings(self):
+        """Close legacy ended turns and turns demonstrably superseded in one session.
+
+        Never infer success, rewrite delivered events, or expire a live turn by age.
+        """
+        with self.transaction():
+            rows = self.db.execute(
+                "SELECT r.token,r.ended FROM runs r WHERE r.identity=? AND r.closed=0 "
+                "AND (r.ended=1 OR EXISTS (SELECT 1 FROM runs newer WHERE "
+                "newer.identity=r.identity AND newer.session=r.session "
+                "AND newer.created>r.created)) "
+                "ORDER BY r.created",
+                (self.identity,),
+            ).fetchall()
+            for row in rows:
+                self._end_unverified(
+                    row["token"],
+                    (
+                        "Session ended without a verified task outcome"
+                        if row["ended"]
+                        else "A new prompt arrived before this turn recorded an outcome"
+                    ),
+                )
+            return [row["token"] for row in rows]
 
     def close_incomplete(self, token, reason):
         with self.transaction():
@@ -735,22 +852,63 @@ class HookQueue:
             ).fetchone()
             if not run or not run["ended"] or json.loads(run["gaps"]):
                 raise ValueError("Attestation requires an ended, complete, unverified capture")
-            if run["closed"]:
-                completion = json.loads(
-                    self.db.execute(
-                        "SELECT payload FROM events WHERE run=? ORDER BY sequence DESC LIMIT 1",
-                        (token,),
-                    ).fetchone()[0]
-                )
-                if completion["status"] != ("success" if succeeded else "failure"):
+            prior = self.db.execute(
+                "SELECT derived,succeeded FROM attestations WHERE identity=? AND run=?",
+                (self.identity, token),
+            ).fetchone()
+            if prior:
+                if bool(prior["succeeded"]) != succeeded:
                     raise ValueError("Attestation cannot change an existing outcome")
-                return
+                return prior["derived"]
+            source = token
+            if run["closed"]:
+                events = [
+                    json.loads(row[0])
+                    for row in self.db.execute(
+                        "SELECT payload FROM events WHERE run=? ORDER BY sequence",
+                        (token,),
+                    )
+                ]
+                completion = events[-1]
+                if completion.get("outcome_verified", True):
+                    if completion["status"] != ("success" if succeeded else "failure"):
+                        raise ValueError("Attestation cannot change an existing outcome")
+                    return token
+                # Delivered closures are immutable. A person's later attestation
+                # gets a linked run; it cannot silently rewrite the original.
+                token = str(uuid4())
+                self.db.execute(
+                    "INSERT INTO runs(token,identity,session,turn,scope,profile,ended,created) "
+                    "VALUES (?,?,?,?,?,?,1,?)",
+                    (
+                        token,
+                        self.identity,
+                        digest(["attestation", token]),
+                        token,
+                        run["scope"],
+                        run["profile"],
+                        time.time(),
+                    ),
+                )
+                for index, event in enumerate(events[:-1]):
+                    event.pop("sequence")
+                    event.pop("event_id")
+                    self.append(token, f"attested-{index}", event)
+                self.db.execute(
+                    "INSERT INTO attestations VALUES (?,?,?,?)",
+                    (self.identity, source, token, int(succeeded)),
+                )
             self.append(
                 token,
                 "completion",
-                {"kind": "completion", "status": "success" if succeeded else "failure"},
+                {
+                    "kind": "completion",
+                    "status": "success" if succeeded else "failure",
+                    "response": {"verifier": "human_attestation", "source_run": source},
+                },
             )
             self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
+            return token
 
     def listing(self):
         return [
@@ -884,7 +1042,7 @@ class HookQueue:
                             (token,),
                         ).fetchone()[0]
                     )
-                    if last.get("capture_complete", True):
+                    if last.get("capture_complete", True) and last.get("outcome_verified", True):
                         raise ValueError("An attested outcome cannot be rewritten")
                 if succeeded and (
                     not any(m.get("type") == "turn.completed" for m in messages)
@@ -1009,6 +1167,12 @@ def run_hook(config_path, client_name, payload):
                     f"MuscleMemory capture queued ({type(error).__name__}); run hooks flush.",
                     file=sys.stderr,
                 )
+        if stage == "prompt":
+            for ended in queue.pending_endings(token):
+                try:
+                    queue.deliver(client, ended)
+                except Exception:
+                    break  # The exact closure remains queued for the next prompt or flush.
         if stage == "verified" and config.get("auto_learn", True):
             # Tests passed after the last change: count it as a check for a skill it
             # used, or learn a new skill that waits for a person's OK.
@@ -1172,11 +1336,35 @@ def hooks_command(arguments):
                 while count := queue.deliver(client, token):
                     delivered += count
             print(json.dumps({"delivered_events": delivered}))
+        elif arguments.action == "repair":
+            repaired = queue.repair_endings()
+            delivered = 0
+            retry_after = None
+            for token in queue.pending():
+                try:
+                    while count := queue.deliver(client, token):
+                        delivered += count
+                except httpx.HTTPStatusError as error:
+                    if error.response.status_code != 429:
+                        raise
+                    retry_after = error.response.headers.get("Retry-After", "60")
+                    break  # Closures are durable; retry without rewriting any events.
+            print(
+                json.dumps(
+                    {
+                        "closed_runs": len(repaired),
+                        "delivered_events": delivered,
+                        "pending_runs": len(queue.pending()),
+                        "retry_after_seconds": retry_after,
+                    }
+                )
+            )
         elif arguments.action == "attest":
-            queue.attest(arguments.run, arguments.succeeded)
-            while queue.deliver(client, arguments.run):
-                pass
-            result = {"run_token": arguments.run, "attested": True}
+            token = queue.attest(arguments.run, arguments.succeeded)
+            for pending in dict.fromkeys([arguments.run, token]):
+                while queue.deliver(client, pending):
+                    pass
+            result = {"run_token": token, "source_run": arguments.run, "attested": True}
             print(json.dumps(result))
         elif arguments.action == "reconcile":
             messages = [

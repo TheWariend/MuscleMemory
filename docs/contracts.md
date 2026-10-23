@@ -77,6 +77,20 @@ Retries must reference a preceding failed event. Omitted token usage is unknown.
 The SDK captures tool calls/durations automatically; upstream token instrumentation
 is required for tokens. A completion proof needs successful tool evidence IDs.
 
+Events may include `occurred_at`, an ISO 8601 timestamp with a timezone. On the
+initial intent, this preserves the session's start time across queued delivery.
+Activity sorts by that start time; a future client timestamp is capped at receipt
+time. Older producers that omit it keep the server's receipt time. This timestamp
+does not verify the outcome or extend trace retention.
+
+On a completion event, `capture_complete: false` closes the run as `incomplete`.
+Otherwise, `outcome_verified: false` closes it as `unverified`; a complete recording
+does not establish task success. Verified completions use their `success` or
+`failure` status. Neither incomplete nor unverified completions can prove learning.
+Run details expose `capture_reason` and, when recorded, a structured `capture_gaps`
+array. Consumers should prefer the array over parsing the human-readable reason;
+older recordings may only contain the reason string.
+
 Python and TypeScript observation wrappers use this same event contract.
 `$mm_capture_omitted` marks unsupported/oversized captured data; steps with omitted
 arguments cannot be compiled. The marker is data, never executable code. See

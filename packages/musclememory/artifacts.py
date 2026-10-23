@@ -13,7 +13,7 @@ from .security import MASK, redact
 # Added by the capture hooks to a shell step: project files the command changed.
 WORKSPACE_CHANGES = "$mm_workspace_changes"
 PATH_KEYS = {"path", "file_path", "filename", "file", "target", "output_path"}
-READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc"}
+READERS = {"cat", "head", "tail", "sed", "rg", "grep", "ls", "find", "stat", "wc", "nl"}
 # Programs that only run tests, and tools that run tests with one of these subcommands.
 # Deliberately left out: type checks and builds (tsc, mypy, npm run build), linters, and
 # scripts only named like checks (contract-check.mjs). A skill is only as good as the test
@@ -127,6 +127,13 @@ def command_parts(command):
 LOOKING = {"status", "diff", "log", "show", "ls-files"}
 
 
+def inspection_program(word):
+    """Project-relative executables cannot qualify merely by their basename."""
+    if "/" in word and posixpath.dirname(word) not in {"/bin", "/usr/bin"}:
+        return None
+    return posixpath.basename(word)
+
+
 def inspection_only(arguments, capability=""):
     """A shell command that only looks around: reading, listing, git status/diff/log."""
     command = arguments.get("command")
@@ -134,24 +141,93 @@ def inspection_only(arguments, capability=""):
         return False
     if not isinstance(command, str):
         return False
+    try:
+        outer = shlex.split(command)
+        if len(outer) >= 3 and inspection_program(outer[0]) in {"sh", "bash", "zsh"}:
+            if outer[-2] in {"-c", "-lc"}:
+                command = outer[-1]
+    except ValueError:
+        return False
     # Discarding or merging output writes nothing; any other redirect may.
-    command = re.sub(r"\d*>\s*/dev/null|\d*>&\d+", " ", command)
+    command = re.sub(r"\d*>\s*/dev/null(?=\s|[|;&]|$)|\d*>&\d+(?=\s|[|;&]|$)", " ", command)
     if any(char in command for char in ">`$<"):
         return False
-    pieces = [piece for piece in re.split(r"&&|\|\||;|\||\n", command) if piece.strip()]
-    for piece in pieces:
-        words = command_parts(piece)
+    # A quoted hash is search text. Unquoted comments remain conservative: their
+    # contents must not make the lexer hide a command on the following line.
+    quote, escaped = None, False
+    for char in command:
+        if escaped:
+            escaped = False
+        elif char == "\\" and quote != "'":
+            escaped = True
+        elif quote:
+            if char == quote:
+                quote = None
+        elif char in {"'", '"'}:
+            quote = char
+        elif char == "#":
+            return False
+    # Shell operators inside quotes are arguments, e.g. rg 'foo|bar'. Preserve
+    # actual newlines as separators so a following writer cannot hide in a read.
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|\n")
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        pieces, words = [], []
+        for word in lexer:
+            if word and all(char in ";&|\n" for char in word):
+                operator = word.replace("\n", "")
+                if operator not in {";", "&&", "||", "|", ""}:
+                    return False
+                if words:
+                    pieces.append(words)
+                elif operator in {"&&", "||", "|"}:
+                    return False
+                words = []
+            else:
+                words.append(word)
+        if words:
+            pieces.append(words)
+    except ValueError:
+        return False
+    for words in pieces:
         if not words:
             return False
-        name = posixpath.basename(words[0])
-        if name == "sed" and any(word.startswith(("-i", "--in-place")) for word in words):
+        name = inspection_program(words[0])
+        # Only sed's common print-range form is known to be read-only. Other
+        # scripts can write files or execute programs without using -i.
+        if name == "sed" and not (
+            len(words) >= 4
+            and words[1] == "-n"
+            and re.fullmatch(r"\d+(?:,\d+)?p", words[2])
+            and not any(word.startswith("-") for word in words[3:])
+        ):
             return False
-        if name == "find" and {"-delete", "-exec", "-execdir"} & set(words):
+        if name == "rg" and any(
+            word.split("=")[0] in {"--pre", "--hostname-bin"} for word in words
+        ):
+            return False
+        if name == "find" and {
+            "-delete",
+            "-exec",
+            "-execdir",
+            "-ok",
+            "-okdir",
+            "-fprint",
+            "-fprint0",
+            "-fprintf",
+            "-fls",
+        } & set(words):
             return False
         looking = name == "git" and len(words) > 1 and words[1] in LOOKING
+        if looking and any(
+            word.split("=")[0] in {"--output", "--ext-diff", "--textconv"} for word in words
+        ):
+            return False
         if not (name in READERS or name == "pwd" or looking):
             return False
-    return True
+    return bool(pieces)
 
 
 REDIRECT = re.compile(r"^\d*(?:>>?|<)(?:&\d+)?$|^&>$|^\d*>&\d+$")
