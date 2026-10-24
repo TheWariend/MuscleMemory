@@ -43,14 +43,20 @@ Give Codex a task, then:
 - On `Stop`, a session with a passing test after its last patch is verified and
   learned from. Test summaries are read from plain terminal output and structured
   stdout/stderr or text content, even when Codex omits the exit code.
+- Completed native receipts can recover a coding segment from an otherwise
+  incomplete or not verified hook record. Native file URLs are normalized to local
+  paths. Recovery checks the actual execution directory and tool timing, keeps the
+  original recording, and never reruns commands. The next prompt retries when the
+  native completion arrived after Stop. For old recordings, see
+  [receipt recovery](../../docs/integrations.md#what-happens-during-a-session).
 - A complete session without a confirmed test after a code change is **Not
   verified**. Missing actions or ambiguous ordering are **Incomplete**, with capture
   reasons in the full record. Neither state counts as a successful fix.
 
 ## Known limits
 
-- When Codex applies a patch through a shell heredoc, it can send "tool started"
-  without "tool finished". That session is marked incomplete and not learned from.
+- A missing command finish hook can be recovered from matching completed native
+  receipts. A missing result without a native receipt still prevents verification.
 - Parallel reads are supported. Concurrent edits are supported only when each
   tool supplies a `file_path` resolving to a different file. Aliased paths are
   treated as the same target. Codex `apply_patch` supplies patch text

@@ -84,7 +84,13 @@ see [its setup](../integrations/cleanslate/README.md).
     skill's stored test command, it counts as one check. Commands are compared after
     normalizing pipes, redirects and shell wrappers; parameterized commands keep
     argument-shape matching. An unrelated final test does not count.
-  - Otherwise MuscleMemory learns a new skill from it.
+  - Otherwise, when a learning agent is selected in **Connect & settings**, the
+    recording is queued for semantic distillation. A proposer and a separate
+    assessment can reject weak material, refine an existing procedure, or admit
+    a new provisional procedure with cited evidence. The hook returns before
+    inference starts. With model curation off, the local compiler still learns
+    provisional skills without model calls. Neither path bypasses verification,
+    independent checks, approval, or removed-skill fingerprints.
 - **Tests failed:** nothing is learned. If the session was given a skill, changed
   code, and that skill's own test was the last test and failed, it counts as a
   failed check for that skill.
@@ -119,6 +125,28 @@ python scripts/repair_activity_timestamps.py --apply
 The second command creates a private database backup and restores start times
 from matching local hook queue records. It checks the endpoint, credential,
 workspace, runtime and intent, and preserves events, outcomes and retention.
+
+To recover skills from older Codex recordings that were left incomplete or not
+verified, preview native receipt recovery from the editable source checkout:
+
+```sh
+python scripts/recover_recorded_skills.py --report /tmp/skill-recovery-preview.json
+python scripts/recover_recorded_skills.py --apply --report /tmp/skill-recovery-applied.json
+```
+
+Apply creates a private, integrity-checked SQLite backup first. Original recordings
+remain unchanged. Recovered copies link to their source run and use stable IDs,
+so retrying does not create duplicate skills or independent checks. Actual native
+session, turn, tool results, execution directories and timing must establish that
+tests passed after the recorded code changes in the same project. Only the proven
+coding segment is learned; later browser or publishing actions are not included.
+External actions inside that segment, missing results and untested changes remain
+unrecovered, with counts in the report. Deleted skills remain deleted. Recovered
+skills follow the usual approval and independent-check requirements.
+
+Native hooks also attempt this recovery at Stop and at the next prompt, because
+Codex can write the final native completion after the Stop hook has already run.
+No old commands are executed by recovery.
 
 A skill reaches agents only when both are true:
 
@@ -302,14 +330,30 @@ skill through your controller with the same checks as the MCP server.
 
 ## Known limits
 
-- **Codex and shell patches.** When Codex applies a patch through a shell heredoc, it
-  can send the "tool started" hook without the "tool finished" hook. The capture is
-  marked incomplete and nothing is learned from that session.
-- **Parallel tools.** Overlapping tool calls make a capture incomplete, because their
-  order and dependencies are unknown.
+- **Codex command results.** Desktop hooks sometimes omit a command's exit status or
+  its finish hook. MuscleMemory reads completed native execution records from the
+  local transcript, matching the session, turn, call ID, command, and working directory.
+  Codex may publish that record after the finish hook. The result stays in the
+  private queue until a later hook can finalize it, before its first upload.
+  A missing finish hook can be recovered before the next action or at Stop, without
+  running the command again. Missing or mismatched native records remain unverified;
+  an unfinished action without a matching result still makes capture incomplete.
+- **Parallel tools.** Reads and edits of distinct known files can overlap. When
+  potentially conflicting actions overlap and all results arrive, the recording is
+  complete but not verified: their dependencies are unknown, so it cannot teach a
+  skill from the hook record alone. Native recovery can recover a linked coding
+  segment when complete native results prove that the final test followed its
+  changes without overlapping any potential mutation. An action whose result is
+  missing still makes capture incomplete.
+- **Desktop browser scripts.** CUA scripts are recorded as potentially destructive
+  browser actions, including their inputs and results. A successful script or a
+  passing local test does not verify a browser task, so these sessions remain not
+  verified and do not automatically teach coding skills. Use the browser adapter
+  for browser skill learning and task verification.
 - **Unknown tools.** Tools without a mapping (plugin or MCP tools) mark a gap. Add
   them under `"tools"` in the hooks file with a capability and an effect (`read`,
-  `write` or `destructive`).
+  `write` or `destructive`). Known GitHub reads and client context helpers are
+  excluded from coding workflows. Unknown mutations are never assumed to be reads.
 - **Interrupted sessions.** A session that is interrupted rather than stopped is
   never verified.
 - **No replay of old sessions.** For coding, MuscleMemory only suggests: the agent reads

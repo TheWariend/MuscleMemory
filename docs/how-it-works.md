@@ -44,7 +44,12 @@ flowchart LR
    Equivalent edit, patch or write tools can supply file-change evidence across
    agents. The original agent's read-only shell commands (`cat`, `sed -n`, `grep`,
    `git diff`) need not be repeated.
-   Otherwise MuscleMemory compiles a new skill from it. The session a skill was
+   Otherwise MuscleMemory compiles a new provisional skill locally. If you opt
+   into a learning agent, it instead queues a proposal and curation pass.
+   A curated candidate must express a reusable rule and how to adapt it,
+   with cited execution evidence. Rejection produces no skill; inference failure
+   remains retryable. See [semantic learning and the evidence graph](semantic-learning.md).
+   The session a skill was
    learned from can never count as one of its checks.
 4. **Approve.** Every skill waits for a person's OK, however it was learned
    (hooks, SDK, MCP or the API), and a new version needs a new OK. In the
@@ -126,6 +131,9 @@ establish that a skill is appropriate for another repository.
   gets the request (redacted), the paths changed and the test command, never file
   contents. A short, safe title replaces the built name on the dashboard; otherwise
   the built name stays. The choice is kept in `~/.musclememory/preferences.json`.
+  Choose **Manual only** to use the name button without automatically naming new
+  skills. Optional learning curation cannot set this display name. A built label
+  is not a custom name and does not hide the naming button.
 - **Steps** compiled from the successful session, with dead ends and failed
   branches removed. Steps keep their dependency graph.
 - **Files read and files changed**, the commands run, and the **test command**
@@ -289,7 +297,7 @@ stopped server and is delivered later with `musclememory hooks flush`.
   every step and leaves the final submit to the agent.
 - It does not call a model by default. Embeddings run locally; the only remote
   calls are ones you configure (`MM_EMBEDDING_URL`, `MM_BOUNDARY_LLM_URL`), and skill
-  titles from your own agent if you turn them on.
+  titles and semantic distillation from your own agent if you turn them on.
 - It does not learn from sessions with missing tool calls, from sessions where
   no test passed after the last change, or from the session being checked.
 - It does not hand a skill to agents before two independent checks and, for

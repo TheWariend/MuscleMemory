@@ -47,7 +47,14 @@ cd your-project && musclememory connect codex   # or claude, cursor, cleanslate
 musclememory dashboard                 # opens the dashboard, already signed in
 ```
 
+Verified sessions learn locally without an LLM account. Optionally, in
+**Connect & settings → Learn reusable procedures**, choose a signed-in agent to
+curate captured work. It receives redacted requests, code changes, and test
+evidence; accepted procedures still need independent checks and review.
 Then use your agent as usual. There are no keys or config files to copy.
+
+See [semantic learning and the memory graph](docs/semantic-learning.md) for
+curation, queued work, preserved recordings, and backfill.
 
 Or let your agent set it up: paste this into Claude Code, Codex or Cursor.
 
