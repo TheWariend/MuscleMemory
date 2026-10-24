@@ -33,6 +33,7 @@ from .artifacts import (
 )
 from .core import ExecutionEvent, RuntimeProfile
 from .delivery import render_pointer
+from .native_receipts import command_receipt, completed_tools
 from .sdk import MuscleMemoryClient
 from .security import redact
 from .shapes import FILE_CHANGE
@@ -49,6 +50,7 @@ DEFAULT_TOOLS = {
     "codex": {
         "Bash": ("shell.execute", "destructive"),
         "apply_patch": ("filesystem.patch", "write"),
+        "mcp__cua_repl__js": ("browser.interact", "destructive"),
     },
     "cursor": {
         "Read": ("filesystem.read", "read"),
@@ -69,6 +71,16 @@ CODEX_CONTEXT_TOOLS = {
     "request_user_input",
     "request_user_input_async",
     "update_plan",
+    # Attaching a PR changes chat metadata, not the project or the PR itself.
+    "mcp__codex_app__attach_artifact",
+    "mcp__codex_app__list_threads",
+    "mcp__codex_app__read_thread",
+    "mcp__codex_app__list_artifacts",
+    "mcp__codex_app__read_thread_terminal",
+    "mcp__codex_app__get_usage_limits",
+    "mcp__codex_app__open_in_codex",
+    "mcp__codex_app__load_workspace_dependencies",
+    "mcp__codex_apps__plugin_management__search_plugins",
 } | {
     f"mcp__codex_apps__github__{name}"
     for name in (
@@ -78,6 +90,15 @@ CODEX_CONTEXT_TOOLS = {
         "fetch_issue_comments",
         "fetch_pr_comments",
         "fetch_workflow_run_jobs",
+        "fetch_workflow_job_logs",
+        "fetch_pr",
+        "fetch_commit",
+        "fetch_blob",
+        "fetch_commit_workflow_runs",
+        "fetch_pr_file_patch",
+        "fetch_pr_patch",
+        "fetch_workflow_job_steps",
+        "fetch_workflow_run_artifacts",
         "search",
         "search_issues",
         "search_prs",
@@ -88,6 +109,9 @@ CODEX_CONTEXT_TOOLS = {
         "list_repositories_by_affiliation",
         "list_repositories",
         "list_recent_issues",
+        "list_pull_request_review_threads",
+        "list_pull_request_reviews",
+        "get_commit_combined_status",
     )
 }
 
@@ -194,6 +218,9 @@ class HookQueue:
             CREATE TABLE IF NOT EXISTS active (
                 run TEXT NOT NULL, source TEXT NOT NULL, started REAL NOT NULL,
                 PRIMARY KEY(run,source));
+            CREATE TABLE IF NOT EXISTS pending_calls (
+                run TEXT NOT NULL, source TEXT NOT NULL, payload TEXT NOT NULL,
+                PRIMARY KEY(run,source));
             CREATE TABLE IF NOT EXISTS claims (
                 run TEXT NOT NULL, source TEXT NOT NULL, kind TEXT NOT NULL, path TEXT,
                 PRIMARY KEY(run,source));
@@ -218,6 +245,9 @@ class HookQueue:
             CREATE TABLE IF NOT EXISTS attestations (
                 identity TEXT NOT NULL, run TEXT NOT NULL, derived TEXT NOT NULL,
                 succeeded INTEGER NOT NULL, PRIMARY KEY(identity,run));
+            CREATE TABLE IF NOT EXISTS native_recoveries (
+                identity TEXT NOT NULL, run TEXT NOT NULL, result TEXT NOT NULL,
+                PRIMARY KEY(identity,run));
         """)
 
     def close(self):
@@ -265,8 +295,134 @@ class HookQueue:
                 ):
                     refused.add(item["tool_use_id"])
         for source in refused:
-            for table in ("claims", "active", "snapshots", "overlaps"):
+            for table in ("claims", "active", "pending_calls", "snapshots", "overlaps"):
                 self.db.execute(f"DELETE FROM {table} WHERE run=? AND source=?", (token, source))
+
+    def _recover_codex_calls(self, payload, tools, profile, scope):
+        """Recover a missing command finish hook only from its native execution receipt."""
+        turn = str(payload.get("turn_id", ""))
+        receipts = completed_tools(payload.get("transcript_path"), turn, payload.get("session_id"))
+        if not receipts:
+            return
+        session = digest(["codex", payload.get("session_id")])
+        pending = self.db.execute(
+            "SELECT p.payload FROM pending_calls p JOIN runs r ON r.token=p.run "
+            "JOIN active a ON a.run=p.run AND a.source=p.source "
+            "WHERE r.identity=? AND r.session=? AND r.turn=? AND r.closed=0 ORDER BY p.rowid",
+            (self.identity, session, turn),
+        ).fetchall()
+        for row in pending:
+            call = json.loads(row[0])
+            if call.get("tool_name") != "Bash":
+                continue
+            item = command_receipt(
+                receipts.get(call.get("tool_use_id")), call.get("tool_input"), call.get("cwd")
+            )
+            if not item:
+                continue
+            self.handle(
+                "codex",
+                {
+                    **call,
+                    "hook_event_name": "PostToolUse",
+                    "transcript_path": payload.get("transcript_path"),
+                    "tool_response": {
+                        "output": item.get("aggregated_output", ""),
+                        "exit_code": item["exit_code"],
+                        "capture_source": "codex_transcript",
+                    },
+                },
+                tools,
+                profile,
+                scope,
+                recovered=True,
+            )
+
+    def _settle_codex_results(self, payload):
+        """Finalize queued stdout-only results once Codex publishes native metadata.
+
+        A PostToolUse can run before item_completed is written. These events stay
+        private and unacknowledged until the next hook or Stop can settle them.
+        Uploaded events are never changed.
+        """
+        turn = str(payload.get("turn_id", ""))
+        receipts = completed_tools(payload.get("transcript_path"), turn, payload.get("session_id"))
+        if not receipts:
+            return
+        session = digest(["codex", payload.get("session_id")])
+        with self.transaction():
+            rows = self.db.execute(
+                "SELECT p.run,p.source,p.payload,e.payload AS event FROM pending_calls p "
+                "JOIN runs r ON r.token=p.run JOIN events e ON e.run=p.run AND e.source=p.source "
+                "WHERE r.identity=? AND r.session=? AND r.turn=? AND r.closed=0 AND e.ack=0",
+                (self.identity, session, turn),
+            ).fetchall()
+            for row in rows:
+                pending = json.loads(row["payload"])
+                if not pending.get("post"):
+                    continue
+                receipt = command_receipt(
+                    receipts.get(row["source"]), pending.get("tool_input"), pending.get("cwd")
+                )
+                if not receipt:
+                    continue
+                event = json.loads(row["event"])
+                response = event["response"]
+                event["response"] = {
+                    **(response if isinstance(response, dict) else {"output": response}),
+                    "exit_code": receipt["exit_code"],
+                    "capture_source": "codex_transcript",
+                }
+                if receipt["exit_code"] != 0 or receipt["status"] == "failed":
+                    event["status"] = "failure"
+                event["outcome_verified"] = not pending.get("overlapped")
+                command = event["arguments"].get("command")
+                if "verify" in operation_categories(event["arguments"], event["capability"]) and (
+                    workspace.piped_test(command_parts(command), str(command))
+                ):
+                    verdict = workspace.test_output_verdict(workspace.output_text(response))
+                    if verdict is False:
+                        event["status"] = "failure"
+                    elif verdict is None:
+                        event["outcome_verified"] = False
+                        self.gap(row["run"], "unverified_exit_status")
+                self.db.execute(
+                    "UPDATE events SET payload=? WHERE run=? AND source=? AND ack=0",
+                    (json.dumps(event), row["run"], row["source"]),
+                )
+                self.db.execute(
+                    "DELETE FROM pending_calls WHERE run=? AND source=?",
+                    (row["run"], row["source"]),
+                )
+
+    def _release_pending_results(self, token):
+        """Release received results whose native metadata never became available."""
+        rows = self.db.execute(
+            "SELECT e.payload FROM pending_calls p JOIN events e "
+            "ON e.run=p.run AND e.source=p.source WHERE p.run=?",
+            (token,),
+        ).fetchall()
+        if any(not json.loads(row[0]).get("outcome_verified", True) for row in rows):
+            self.gap(token, "unverified_exit_status")
+        self.db.execute(
+            "DELETE FROM pending_calls WHERE run=? AND source IN "
+            "(SELECT source FROM events WHERE run=?)",
+            (token, token),
+        )
+
+    def _settle_previous_codex_turns(self, payload, tools):
+        session = digest(["codex", payload.get("session_id")])
+        rows = self.db.execute(
+            "SELECT turn,profile,scope FROM runs WHERE identity=? AND session=? AND closed=0 "
+            "AND turn!=? ORDER BY created DESC LIMIT 8",
+            (self.identity, session, str(payload.get("turn_id", ""))),
+        ).fetchall()
+        for row in rows:
+            previous = {**payload, "turn_id": row["turn"]}
+            self._settle_codex_results(previous)
+            self._recover_codex_calls(
+                previous, tools, RuntimeProfile.model_validate_json(row["profile"]), row["scope"]
+            )
 
     @staticmethod
     def _claim(name, arguments, tools, cwd=None):
@@ -296,8 +452,8 @@ class HookQueue:
             gaps.append(reason)
         self.db.execute("UPDATE runs SET gaps=? WHERE token=?", (json.dumps(gaps[:100]), run))
 
-    def append(self, run, source, fields):
-        fingerprint = digest(fields)
+    def append(self, run, source, fields, *, fingerprint=None):
+        fingerprint = fingerprint or digest(fields)
         prior = self.db.execute(
             "SELECT fingerprint FROM events WHERE run=? AND source=?", (run, source)
         ).fetchone()
@@ -325,8 +481,27 @@ class HookQueue:
             (run, sequence, source, fingerprint, json.dumps(event)),
         )
 
-    def handle(self, client, payload, tools, profile, scope):
+    def handle(self, client, payload, tools, profile, scope, *, recovered=False):
         event_name = payload.get("hook_event_name", "")
+        if client == "codex" and event_name == "UserPromptSubmit":
+            self._settle_previous_codex_turns(payload, tools)
+        if client == "codex" and event_name in {"PreToolUse", "Stop", "Interrupt", "SessionEnd"}:
+            # Recovery must happen outside the queue transaction; each recovered
+            # result follows the same idempotent capture path as a normal hook.
+            self._settle_codex_results(payload)
+            self._recover_codex_calls(payload, tools, profile, scope)
+        receipt = None
+        if client == "codex" and payload.get("tool_name") == "Bash" and event_name == "PostToolUse":
+            receipts = completed_tools(
+                payload.get("transcript_path"),
+                str(payload.get("turn_id", "")),
+                payload.get("session_id"),
+            )
+            receipt = command_receipt(
+                receipts.get(payload.get("tool_use_id")),
+                payload.get("tool_input"),
+                payload.get("cwd"),
+            )
         # The session id alone names a session. The working directory is not part of it:
         # Claude Code reports the directory a `cd` moved to on that tool's PostToolUse.
         session = digest([client, payload.get("session_id", payload.get("conversation_id"))])
@@ -344,7 +519,23 @@ class HookQueue:
             "postToolUse",
             "postToolUseFailure",
         }
-        view = workspace.snapshot(payload.get("cwd")) if shell and tool_event else None
+        include_paths = ()
+        if shell and event_name in {
+            "PostToolUse",
+            "PostToolUseFailure",
+            "postToolUse",
+            "postToolUseFailure",
+        }:
+            previous_view = self.db.execute(
+                "SELECT s.state FROM snapshots s JOIN runs r ON r.token=s.run "
+                "WHERE r.identity=? AND r.session=? AND r.turn=? AND s.source=?",
+                (self.identity, session, turn, payload.get("tool_use_id")),
+            ).fetchone()
+            if previous_view:
+                include_paths = json.loads(previous_view[0])["files"]
+        view = (
+            workspace.snapshot(payload.get("cwd"), include_paths) if shell and tool_event else None
+        )
         project = (
             view["root"]
             if view
@@ -425,6 +616,9 @@ class HookQueue:
                 # A refused or abandoned read never ran or changed nothing; only an
                 # unfinished change or command leaves the session's effects unknown.
                 self._drop_refused(token, payload.get("transcript_path"))
+                # A result was received but no matching native metadata appeared.
+                # Release its saved output as unverified; never block the queue forever.
+                self._release_pending_results(token)
                 if self.db.execute("SELECT 1 FROM claims WHERE run=?", (token,)).fetchone():
                     self.gap(token, "unfinished_tool")
                 self.db.execute("DELETE FROM active WHERE run=?", (token,))
@@ -509,6 +703,27 @@ class HookQueue:
                 self.db.execute(
                     "INSERT OR IGNORE INTO active VALUES (?,?,?)", (token, source, time.time())
                 )
+                if client == "codex":
+                    # Store sanitized inputs so a later native receipt can close
+                    # a missing PostToolUse without executing the command again.
+                    saved = {
+                        key: payload[key]
+                        for key in (
+                            "session_id",
+                            "turn_id",
+                            "cwd",
+                            "tool_name",
+                            "tool_use_id",
+                            "tool_input",
+                            "transcript_path",
+                        )
+                        if key in payload
+                    }
+                    if len(json.dumps(saved)) <= 65536:
+                        self.db.execute(
+                            "INSERT OR IGNORE INTO pending_calls VALUES (?,?,?)",
+                            (token, source, json.dumps(redact(saved))),
+                        )
                 if kind:
                     self.db.execute(
                         "INSERT OR REPLACE INTO claims VALUES (?,?,?,?)",
@@ -531,8 +746,33 @@ class HookQueue:
                 "SELECT started FROM active WHERE run=? AND source=?", (token, source)
             ).fetchone()
             prior = self.db.execute(
-                "SELECT payload FROM events WHERE run=? AND source=?", (token, source)
+                "SELECT payload,fingerprint FROM events WHERE run=? AND source=?", (token, source)
             ).fetchone()
+            if recovered and prior:
+                # A normal PostToolUse can win the race with receipt recovery.
+                # Its already recorded result must not be replaced or duplicated.
+                return token, "captured"
+            # Derived exit metadata may arrive between retries. Idempotence is
+            # based on the original hook, not on when that metadata became visible.
+            fingerprint = digest(
+                [
+                    name,
+                    payload.get("tool_input", {}),
+                    payload.get("tool_response", payload.get("tool_output")),
+                    event_name in {"PostToolUseFailure", "postToolUseFailure"},
+                    payload.get("error", payload.get("error_message")),
+                ]
+            )
+            if prior and prior["fingerprint"] == fingerprint:
+                return token, "captured"
+            if prior and receipt:
+                previous = json.loads(prior["payload"]).get("response")
+                if (
+                    isinstance(previous, dict)
+                    and previous.get("capture_source") == "codex_transcript"
+                    and previous.get("exit_code") == receipt["exit_code"]
+                ):
+                    return token, "captured"  # a native recovery preceded this late hook
             measured_duration = (
                 json.loads(prior[0])["duration_ms"]
                 if prior
@@ -541,6 +781,7 @@ class HookQueue:
                 else 0
             )
             self.db.execute("DELETE FROM active WHERE run=? AND source=?", (token, source))
+            self.db.execute("DELETE FROM pending_calls WHERE run=? AND source=?", (token, source))
             claimed = self.db.execute(
                 "SELECT kind FROM claims WHERE run=? AND source=?", (token, source)
             ).fetchone()
@@ -594,17 +835,65 @@ class HookQueue:
                     response = json.loads(response)
                 except ValueError:
                     pass
+            if receipt:
+                # Native execution metadata settles the process result even when
+                # the hook only contains stdout. Keep the original tool output.
+                explicit_code = (
+                    response.get("exitCode", response.get("exit_code"))
+                    if isinstance(response, dict)
+                    else None
+                )
+                if type(explicit_code) is int and explicit_code != receipt["exit_code"]:
+                    self.gap(token, "conflicting_duplicate")
+                response = {
+                    **(response if isinstance(response, dict) else {"output": response}),
+                    "exit_code": receipt["exit_code"],
+                    "capture_source": "codex_transcript",
+                }
+                if receipt.get("status") == "failed":
+                    response["isError"] = True
             output = workspace.output_text(response)
             failed = event_name in {"PostToolUseFailure", "postToolUseFailure"}
             outcome_verified = True
+            deferred = False
+            browser = tools[name][0] == "browser.interact"
+            if browser:
+                # A successful UI script is recorded, but is not proof that a
+                # browser task achieved its goal. Browser skills use their adapter.
+                outcome_verified = False
             if isinstance(response, dict):
                 failed |= response.get("isError") is True or response.get("success") is False
                 failed |= response.get("exitCode", response.get("exit_code", 0)) not in (None, 0)
             if client == "codex" and name == "Bash":
+                deferred = (
+                    not receipt
+                    and isinstance(payload.get("transcript_path"), str)
+                    and bool(payload["transcript_path"])
+                    and not (
+                        isinstance(payload.get("tool_response"), dict)
+                        and type(response.get("exitCode", response.get("exit_code"))) is int
+                    )
+                )
+                if deferred:
+                    pending = {
+                        "post": True,
+                        "tool_input": payload.get("tool_input", {}),
+                        "cwd": payload.get("cwd"),
+                        "overlapped": bool(overlapped),
+                    }
+                    if len(json.dumps(pending)) <= 65536:
+                        self.db.execute(
+                            "INSERT OR REPLACE INTO pending_calls VALUES (?,?,?)",
+                            (token, source, json.dumps(redact(pending))),
+                        )
+                    else:
+                        deferred = False
                 code = re.search(r"(?:Process exited with code|Exit code:)\s*(-?\d+)", output)
                 failed |= bool(code and int(code[1]) != 0)
-                explicit = isinstance(response, dict) and isinstance(
-                    response.get("exitCode", response.get("exit_code")), int
+                explicit = (
+                    isinstance(response, dict)
+                    and type(response.get("exitCode", response.get("exit_code"))) is int
+                    and (bool(receipt) or isinstance(payload.get("tool_response"), dict))
                 )
                 outcome_verified = bool(code or explicit or failed)
                 if not outcome_verified and "verify" in operation_categories(
@@ -615,7 +904,7 @@ class HookQueue:
                     verdict = workspace.test_output_verdict(output)
                     if verdict is not None:
                         outcome_verified, failed = True, failed or not verdict
-                if not outcome_verified:
+                if not outcome_verified and not deferred:
                     self.gap(token, "unverified_exit_status")
             command = arguments.get("command")
             if (
@@ -630,7 +919,8 @@ class HookQueue:
                     failed = True
                 elif verdict is None:
                     outcome_verified = False
-                    self.gap(token, "unverified_exit_status")
+                    if not deferred:
+                        self.gap(token, "unverified_exit_status")
             if overlapped:
                 # It ran while files were being edited, so it proves nothing about them.
                 outcome_verified = False
@@ -648,11 +938,13 @@ class HookQueue:
                     else response,
                     "status": "failure" if failed else "success",
                     "outcome_verified": outcome_verified,
+                    "exploratory": browser,
                     "duration_ms": max(
                         0,
                         payload.get("duration_ms", payload.get("duration", measured_duration)) or 0,
                     ),
                 },
+                fingerprint=fingerprint,
             )
             return token, "captured"
 
@@ -686,6 +978,9 @@ class HookQueue:
         for index, event in enumerate(events):
             if event["kind"] != "tool":
                 continue
+            if event["capability"] == "browser.interact":
+                # Local tests cannot verify an external browser workflow.
+                return None
             operations = operation_categories(event["arguments"], event["capability"])
             # A shell command that changed files changed them even if it then failed.
             if (
@@ -722,7 +1017,13 @@ class HookQueue:
                 "SELECT * FROM events WHERE run=? AND ack=0 ORDER BY sequence LIMIT 256", (token,)
             ).fetchall()
             batch, size = [], 0
+            awaiting = {
+                row[0]
+                for row in self.db.execute("SELECT source FROM pending_calls WHERE run=?", (token,))
+            }
             for row in rows:
+                if row["source"] in awaiting:
+                    break  # preserve ordering and finalize before the first upload
                 size += len(row["payload"].encode())
                 if size > 1024 * 1024:
                     break
@@ -789,7 +1090,7 @@ class HookQueue:
         if run["closed"]:
             return
         gaps = json.loads(run["gaps"])
-        if set(gaps) - {"unverified_exit_status"}:
+        if set(gaps) - {"unverified_exit_status", "parallel_tool_dependencies_unknown"}:
             self._finish_incomplete(token, "Capture gaps: " + ", ".join(gaps))
             return
         self.append(
@@ -799,7 +1100,7 @@ class HookQueue:
                 "kind": "completion",
                 "status": "failure",
                 "outcome_verified": False,
-                "response": {"reason": reason},
+                "response": {"reason": reason, "capture_gaps": gaps},
             },
         )
         self.db.execute("UPDATE runs SET closed=1 WHERE token=?", (token,))
@@ -808,6 +1109,7 @@ class HookQueue:
         if self.db.execute("SELECT 1 FROM claims WHERE run=?", (token,)).fetchone():
             self.gap(token, "unfinished_tool")
         self.db.execute("DELETE FROM active WHERE run=?", (token,))
+        self._release_pending_results(token)
         self.db.execute("UPDATE runs SET ended=1 WHERE token=?", (token,))
         self._finish_unverified(token, reason)
 
@@ -1136,6 +1438,57 @@ class HookQueue:
             )
         ]
 
+    def recover_native(self, client, token, transcript_path):
+        """Recover a closed turn from actual native results; preserve its original trace."""
+        from .recovery import RecoverySkipped, read_native_turns, recover_native_run
+
+        row = self.db.execute(
+            "SELECT * FROM runs WHERE token=? AND identity=?", (token, self.identity)
+        ).fetchone()
+        if not row or not row["closed"]:
+            return None
+        if self.db.execute(
+            "SELECT 1 FROM native_recoveries WHERE identity=? AND run=?",
+            (self.identity, token),
+        ).fetchone():
+            return None
+        native = read_native_turns(transcript_path, {row["turn"]}).get(row["turn"])
+        if not native:
+            return None
+        captured = [
+            (r[0], json.loads(r[1]))
+            for r in self.db.execute(
+                "SELECT source,payload FROM events WHERE run=? ORDER BY sequence", (token,)
+            )
+        ]
+        last = captured[-1][1] if captured else {}
+        if (
+            last.get("kind") == "completion"
+            and last.get("status") == "success"
+            and last.get("capture_complete", True)
+            and last.get("outcome_verified", True)
+        ):
+            return None
+        try:
+            recovery = recover_native_run(row, captured, native, CODEX_CONTEXT_TOOLS)
+        except RecoverySkipped:
+            return None
+        events = recovery.pop("events")
+        recovery.pop("source_run")
+        for start in range(0, len(events), 128):
+            result = client.musclememory_observe(
+                **recovery, event_batch=events[start : start + 128]
+            )
+            if result["rejected_event_count"]:
+                raise ValueError("Native recovery delivery rejected")
+        result = client.auto_learn(recovery["run_token"])
+        if result.get("action") != "deferred":
+            self.db.execute(
+                "INSERT OR IGNORE INTO native_recoveries VALUES (?,?,?)",
+                (self.identity, token, json.dumps(result)),
+            )
+        return result
+
 
 def guidance(client, intent, profile, scope):
     result = client.musclememory_recall(
@@ -1146,6 +1499,17 @@ def guidance(client, intent, profile, scope):
 
 def run_hook(config_path, client_name, payload):
     config, tools, profile, client = load_config(config_path, client_name)
+    if isinstance(payload.get("cwd"), str):
+        project, _ = workspace.project_root(payload["cwd"])
+        if project:
+            profile = profile.model_copy(
+                update={
+                    "environment": {
+                        **profile.environment,
+                        "mm_project": hashlib.sha256(project.encode()).hexdigest(),
+                    }
+                }
+            )
     queue = HookQueue(config["state_dir"], client.capture_identity)
     output = {}
     if client_name == "cursor":
@@ -1173,6 +1537,23 @@ def run_hook(config_path, client_name, payload):
                     queue.deliver(client, ended)
                 except Exception:
                     break  # The exact closure remains queued for the next prompt or flush.
+        if (
+            stage == "prompt"
+            and client_name == "codex"
+            and payload.get("transcript_path")
+            and config.get("auto_learn", True)
+        ):
+            # task_complete can arrive after Stop; retry closed turns at the next prompt.
+            for previous in queue.db.execute(
+                "SELECT r.token FROM runs r JOIN runs current ON r.session=current.session "
+                "AND r.identity=current.identity WHERE current.token=? AND r.token!=? "
+                "AND r.closed=1 AND r.ended=1 ORDER BY r.created DESC LIMIT 4",
+                (token, token),
+            ).fetchall():
+                try:
+                    queue.recover_native(client, previous[0], payload["transcript_path"])
+                except Exception:
+                    break  # Offline recovery remains available through migration.
         if stage == "verified" and config.get("auto_learn", True):
             # Tests passed after the last change: count it as a check for a skill it
             # used, or learn a new skill that waits for a person's OK.
@@ -1191,6 +1572,21 @@ def run_hook(config_path, client_name, payload):
                 client.auto_flag(token, hint=skill)
             except Exception as error:
                 print(f"MuscleMemory could not record ({type(error).__name__}).", file=sys.stderr)
+        if (
+            client_name == "codex"
+            and token
+            and stage == "ended"
+            and payload.get("hook_event_name") == "Stop"
+            and payload.get("transcript_path")
+            and config.get("auto_learn", True)
+        ):
+            try:
+                queue.recover_native(client, token, payload["transcript_path"])
+            except Exception as error:
+                print(
+                    f"MuscleMemory native recovery queued ({type(error).__name__}).",
+                    file=sys.stderr,
+                )
         recall_enabled = config.get("recall_enabled", True)
         if stage == "prompt" and client_name != "cursor" and recall_enabled:
             try:
@@ -1425,7 +1821,8 @@ def hooks_command(arguments):
                     )
                 ]
                 for token in tokens:
-                    queue.db.execute("DELETE FROM active WHERE run=?", (token,))
+                    for table in ("active", "pending_calls", "claims", "snapshots", "overlaps"):
+                        queue.db.execute(f"DELETE FROM {table} WHERE run=?", (token,))
                     queue.db.execute("DELETE FROM events WHERE run=?", (token,))
                     queue.db.execute(
                         "DELETE FROM skips WHERE identity=? AND run=?", (queue.identity, token)

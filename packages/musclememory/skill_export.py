@@ -6,6 +6,7 @@ use it even without MuscleMemory connected.
 """
 
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -171,8 +172,10 @@ def slug(text):
     return ("musclememory-" + words)[:64].rstrip("-")
 
 
-def render_proven(title, summary, successes, avoid, recover):
+def render_proven(title, summary, successes, avoid, recover, *, learning=None):
     """A proven MuscleMemory skill as SKILL.md: when to use it, where, what, how to check."""
+    if learning:
+        return render_method(learning["proposal"], successes)
     first = re.split(r"(?<=[.!?])\s", title.strip())[0].rstrip(".")
     files = ", ".join(f"`{path}`" for path in summary["changes"]) or "the files named below"
     description = (
@@ -214,3 +217,40 @@ def render_proven(title, summary, successes, avoid, recover):
     if avoid or recover:
         lines += ["## Watch out", "", *(f"- {note}" for note in [*avoid, *recover]), ""]
     return "\n".join(lines).rstrip() + "\n", slug(first)
+
+
+def render_method(proposal, successes):
+    """Export assessed guidance without turning historical diffs into instructions."""
+    name = slug(proposal["title"])
+    lines = [
+        "---",
+        f"name: {name}",
+        f"description: {json.dumps(proposal['trigger']['text'], ensure_ascii=False)}",
+        "---",
+        "",
+        f"# {proposal['title']}",
+        "",
+        f"Curated from recorded evidence, then checked in {successes} independent sessions",
+        "and kept after review. Read the current files and verify applicability before use.",
+        "",
+        "## When to use",
+        "",
+        proposal["trigger"]["text"],
+        "",
+        "## Rule",
+        "",
+        proposal["principle"]["text"],
+        "",
+    ]
+    if proposal["preconditions"]:
+        lines += ["## Preconditions", ""]
+        lines += [f"- {claim['text']}" for claim in proposal["preconditions"]]
+        lines += [""]
+    lines += ["## Method", ""]
+    lines += [f"{index}. {claim['text']}" for index, claim in enumerate(proposal["steps"], 1)]
+    lines += ["", "## Adapt to the current task", "", proposal["adaptation"]["text"], ""]
+    if proposal["failure_modes"]:
+        lines += ["## Watch out", ""]
+        lines += [f"- {claim['text']}" for claim in proposal["failure_modes"]]
+        lines += [""]
+    return "\n".join(lines).rstrip() + "\n", name

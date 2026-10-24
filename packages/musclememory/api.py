@@ -149,8 +149,13 @@ def create_app(service=None):
         # Startup verifies storage, but never silently changes a production schema.
         with service.db.session() as session:
             session.execute(text("SELECT key_id FROM credentials LIMIT 1"))
-        async with mcp.session_manager.run():
-            yield
+        if service.settings.learning_background:
+            service.learning_queue.start()
+        try:
+            async with mcp.session_manager.run():
+                yield
+        finally:
+            service.learning_queue.close()
 
     app = FastAPI(
         title="MuscleMemory by TheWariend",
@@ -255,9 +260,35 @@ def create_app(service=None):
         visibility_scope: Token,
         limit: int = Query(20, ge=1, le=100),
         offset: int = Query(0, ge=0),
+        status: Literal["success", "failure", "recording", "unverified", "incomplete"]
+        | None = None,
+        query: str = Query("", max_length=500),
         actor=auth,
     ):
-        return service.listing(actor, visibility_scope, "runs", limit, offset)
+        return service.listing(
+            actor, visibility_scope, "runs", limit, offset, status=status, query=query
+        )
+
+    @app.get("/v1/graph")
+    def memory_graph(
+        visibility_scope: Token,
+        root: Token | None = None,
+        limit: int = Query(100, ge=1, le=500),
+        actor=auth,
+    ):
+        return service.memory_graph(actor, visibility_scope, root, limit)
+
+    @app.get("/v1/learning")
+    def learning_history(
+        visibility_scope: Token,
+        limit: int = Query(50, ge=1, le=100),
+        actor=auth,
+    ):
+        return service.learning_history(actor, visibility_scope, limit)
+
+    @app.post("/v1/runs/{run_token}/distill")
+    def distill_run(run_token: Token, dry_run: bool = True, actor=auth):
+        return service.distill_run(actor, run_token, dry_run=dry_run)
 
     @app.get("/v1/runs/{run_token}")
     def run(run_token: Token, actor=auth):
@@ -296,7 +327,7 @@ def create_app(service=None):
 
     @app.put("/v1/preferences")
     def set_preferences(request: PreferencesInput, actor=auth):
-        return service.set_preferences(actor, request.skill_titles)
+        return service.set_preferences(actor, request.skill_titles, request.skill_learning)
 
     @app.post("/v1/procedures/{procedure_token}/approve")
     def approve(procedure_token: Token, actor=auth):
@@ -304,6 +335,8 @@ def create_app(service=None):
 
     @app.post("/v1/runs/{run_token}/auto-learn")
     def auto_learn(run_token: Token, hint: Token | None = None, actor=auth):
+        if service.settings.learning_background:
+            return service.learning_queue.enqueue(actor, run_token, hint)
         return service.auto_learn(actor, run_token, hint)
 
     @app.post("/v1/runs/{run_token}/auto-flag")

@@ -100,8 +100,8 @@ def derive_boundaries(definition, events, contrasts):
                 if worked not in fixed:
                     avoidance.append(worked)
                 fixed.setdefault(worked, []).append(failed.strip().splitlines()[0][:90])
-        if event.exploratory and event.event_id not in definition.step_graph["nodes"]:
-            avoidance.append(f"Skip the detour: {step} didn't help last time.")
+        # Pruning a read is not evidence that the read was useless. Necessary
+        # discovery often has no explicit dependency in a captured session.
         if (
             event.retry_of
             and event.status == "success"

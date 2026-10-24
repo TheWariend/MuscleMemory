@@ -8,7 +8,10 @@ from pathlib import Path
 import pytest
 from conftest import learned
 from musclememory import titles
+from musclememory.backfill import align_skill_names
 from musclememory.core import DomainError, InspectInput
+from musclememory.storage import Procedure, Revision
+from test_semantic_learning import Learner, accepted, proposal, source
 
 
 @pytest.fixture
@@ -78,6 +81,85 @@ def test_nothing_runs_while_naming_is_off(service, principal, agent):
         service.set_preferences(principal, "gemini")
 
 
+@pytest.mark.parametrize("choice", ["off", "claude", "codex"])
+def test_curation_cannot_bypass_the_separate_naming_choice(service, principal, agent, choice):
+    runs, replies = agent
+    replies[0] = "Merge configuration overrides safely"
+    service.set_preferences(principal, choice, "codex")
+    source(service, principal)
+    service.learner = Learner(lambda evidence: (proposal(evidence), accepted()))
+    token = service.distill_run(principal, "source")["procedure_token"]
+    if choice != "off":
+        service.titling.join()
+    detail = service.inspect(principal, InspectInput(procedure_token=token))
+    assert detail["definition"]["title"] == "Fix config"
+    assert detail["definition"]["provenance"]["learning"]["proposal"]["title"] == (
+        "Apply configuration overrides consistently"
+    )
+    if choice == "off":
+        assert runs == [] and not detail["has_custom_name"]
+        assert detail["name"]  # A built label must not hide the LLM naming button.
+        assert detail["name"] != "Apply configuration overrides consistently"
+        assert service.name_skill(principal, token, "codex")["name"] == replies[0]
+        assert service.inspect(principal, InspectInput(procedure_token=token))["has_custom_name"]
+    else:
+        assert len(runs) == 1 and runs[0]["command"][0] == f"/usr/local/bin/{choice}"
+        assert detail["has_custom_name"] and detail["name"] == replies[0]
+
+
+def test_turning_off_naming_during_a_request_does_not_publish_the_pending_title(
+    service, principal, agent, monkeypatch
+):
+    service.set_preferences(principal, "codex")
+
+    def finish_after_turning_off(*_):
+        titles.choose_agent(service.settings, None)
+        return "A title that arrived after opting out"
+
+    monkeypatch.setattr("musclememory.service.ask_agent", finish_after_turning_off)
+    token = learned(service, principal)["procedure_token"]
+    service.titling.join()
+    assert not service.inspect(principal, InspectInput(procedure_token=token))["has_custom_name"]
+
+
+def test_name_repair_clears_only_the_curator_bypass_and_preserves_evidence(
+    service, principal, agent
+):
+    service.learner = Learner(lambda evidence: (proposal(evidence), accepted()))
+    tokens = {}
+    originals = {}
+    for kind in ("bypass", "manual_same", "manual_different", "separate", "auto_named"):
+        source(service, principal, kind)
+        token = service.distill_run(principal, kind)["procedure_token"]
+        tokens[kind] = token
+        with service.db.transaction() as db:
+            revision = db.get(Revision, (token, 1))
+            definition = json.loads(json.dumps(revision.definition))
+            if kind != "separate":
+                definition["provenance"]["learning"].pop("naming_policy")
+            revision.definition = definition
+            originals[token] = definition
+            db.get(Procedure, token).name = (
+                "My chosen title" if kind == "manual_different" else proposal({}).title
+            )
+            if kind in {"manual_same", "auto_named"}:
+                service.audit(
+                    db, principal, "team", "name" if kind == "manual_same" else "name_auto", token
+                )
+            db.commit()
+    assert [r["procedure_token"] for r in align_skill_names(service, principal, "team")] == [
+        tokens["bypass"]
+    ]
+    assert len(align_skill_names(service, principal, "team", apply=True)) == 1
+    assert align_skill_names(service, principal, "team", apply=True) == []
+    for kind, token in tokens.items():
+        detail = service.inspect(principal, InspectInput(procedure_token=token))
+        assert detail["has_custom_name"] == (kind != "bypass")
+        assert detail["definition"] == originals[token]
+        assert detail["successes"] == 0 and detail["needs_review"]
+        assert service.get_run(principal, kind)["events"]
+
+
 def test_the_button_names_an_existing_skill_with_either_agent(
     service, principal, agent, monkeypatch
 ):
@@ -99,6 +181,7 @@ def hosted_service(service, agent):
     service.settings = replace(
         service.settings,
         deployment_mode="hosted",
+        learning_agent=None,
         database_url="postgresql+psycopg://memory:example@postgres/musclememory",
         public_url="https://memory.example",
         allowed_hosts=("memory.example",),

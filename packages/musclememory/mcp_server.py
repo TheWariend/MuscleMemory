@@ -50,11 +50,44 @@ def build_mcp(service, stdio_key=None):
             result = await anyio.to_thread.run_sync(getattr(service, method), principal, contract)
             if method == "inspect":
                 from .artifacts import first_sentence, withhold_unproven
+                from .learning import grounded_method
+
+                learning = result["definition"].get("provenance", {}).get("learning")
+                proved_method = grounded_method(
+                    result["definition"], result.get("unproven_lines", []), result["successes"]
+                )
+                if (
+                    result["needs_review"]
+                    or result["lifecycle_status"] != "active"
+                    or result["procedure_version"] != result["version_history"][0]["version"]
+                ):
+                    proved_method = None
 
                 # Agents get what checks reproduced; people review the full record over REST.
                 result["definition"] = withhold_unproven(
                     result["definition"], set(result.get("unproven_lines", []))
                 )
+                if learning:
+                    definition = result["definition"]
+                    result = {
+                        key: result[key]
+                        for key in (
+                            "procedure_token",
+                            "procedure_version",
+                            "lifecycle_status",
+                            "needs_review",
+                            "successes",
+                            "failures",
+                            "version_history",
+                        )
+                    } | {
+                        "method": proved_method,
+                        "method_withheld": proved_method is None,
+                        "source_run": definition["provenance"]["source_run"],
+                        "requirements": definition["environment_requirements"],
+                        "notice": definition["guidance_notice"],
+                        "source_detail": "Original tool arguments remain in the scoped REST record",
+                    }
                 summary = result.get("summary") or {}
                 if summary.get("request"):
                     summary["request"] = first_sentence(summary["request"])

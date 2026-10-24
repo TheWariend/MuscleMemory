@@ -617,6 +617,41 @@ def graph_neighbors(session, tenant, namespace, primary, profile, settings, limi
     definition = source["definition"]
     experience = definition.get("experience") or extract_experience(definition["steps"])
     related = {}
+    from .memory_graph import node, node_key
+    from .storage import MemoryEdge
+
+    key = node_key(node("skill", source["procedure_token"], source["procedure_version"]))
+    semantic = session.scalars(
+        select(MemoryEdge)
+        .where(
+            MemoryEdge.tenant == tenant,
+            MemoryEdge.namespace == namespace,
+            MemoryEdge.source_key == key,
+            MemoryEdge.relation.in_(["requires", "related_to"]),
+        )
+        .limit(settings.link_fanout_limit)
+    ).all()
+    for edge in semantic:
+        target = edge.target
+        procedure = session.get(Procedure, target["reference"])
+        revision = session.get(Revision, (target["reference"], target["version"]))
+        if (
+            not procedure
+            or not revision
+            or procedure.tenant != tenant
+            or procedure.namespace != namespace
+            or procedure.current_version != revision.version
+            or compatibility_freshness(procedure, revision, profile, settings) is None
+        ):
+            continue
+        related[procedure.procedure_token] = {
+            "procedure_token": procedure.procedure_token,
+            "procedure_version": revision.version,
+            "title": revision.definition["title"],
+            "relation": edge.relation,
+            "artifact": "",
+            "reason": edge.evidence.get("reason", ""),
+        }
     for field, direction, relation in (
         ("reads", "write", "prerequisite"),
         ("writes", "read", "follow-up"),

@@ -52,6 +52,7 @@ class Run(Base):
     run_token: Mapped[str] = mapped_column(String(128), primary_key=True)
     namespace: Mapped[str] = mapped_column(String(128))
     intent: Mapped[str] = mapped_column(Text)
+    project_scope: Mapped[str | None] = mapped_column(String(64), nullable=True)
     runtime: Mapped[dict] = mapped_column(JSON)
     status: Mapped[str] = mapped_column(String(20), default="recording")
     learned_result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
@@ -162,6 +163,69 @@ class Evaluation(Base):
         ),
         UniqueConstraint("tenant", "procedure_token", "version", "run_token"),
         Index("ix_evaluations_tenant", "tenant"),
+    )
+
+
+class LearningDecision(Base):
+    """A repeatable curation decision; errors remain retryable, evidence stays intact."""
+
+    __tablename__ = "learning_decisions"
+    decision_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant: Mapped[str] = mapped_column(String(128))
+    namespace: Mapped[str] = mapped_column(String(128))
+    run_token: Mapped[str] = mapped_column(String(128))
+    pipeline: Mapped[str] = mapped_column(String(80))
+    evidence_digest: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(20))
+    reason: Mapped[str] = mapped_column(String(500))
+    proposal: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    assessment: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("tenant", "run_token", "pipeline", "evidence_digest"),
+        Index("ix_learning_scope_created", "tenant", "namespace", "created_at"),
+    )
+
+
+class LearningJob(Base):
+    __tablename__ = "learning_jobs"
+    job_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant: Mapped[str] = mapped_column(String(128))
+    namespace: Mapped[str] = mapped_column(String(128))
+    run_token: Mapped[str] = mapped_column(String(128))
+    pipeline: Mapped[str] = mapped_column(String(80))
+    actor_key: Mapped[str] = mapped_column(String(36))
+    hint: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="queued")
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    available_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    __table_args__ = (
+        UniqueConstraint("tenant", "run_token", "pipeline"),
+        Index("ix_learning_jobs_ready", "status", "available_at"),
+    )
+
+
+class MemoryEdge(Base):
+    """Scoped, typed relationships with explicit versioned endpoints and evidence."""
+
+    __tablename__ = "memory_edges"
+    edge_id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    tenant: Mapped[str] = mapped_column(String(128))
+    namespace: Mapped[str] = mapped_column(String(128))
+    source_key: Mapped[str] = mapped_column(String(64))
+    target_key: Mapped[str] = mapped_column(String(64))
+    relation: Mapped[str] = mapped_column(String(32))
+    source: Mapped[dict] = mapped_column(JSON)
+    target: Mapped[dict] = mapped_column(JSON)
+    evidence: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (
+        UniqueConstraint("tenant", "namespace", "source_key", "target_key", "relation"),
+        Index("ix_memory_edges_source", "tenant", "namespace", "source_key"),
+        Index("ix_memory_edges_target", "tenant", "namespace", "target_key"),
     )
 
 

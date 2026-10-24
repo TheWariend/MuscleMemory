@@ -9,7 +9,7 @@ from datetime import timedelta, timezone
 from pathlib import Path
 
 from pydantic import ValidationError
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
 from .artifacts import (
@@ -31,6 +31,7 @@ from .core import (
     EvaluateInput,
     ExecutionEvent,
     InspectInput,
+    LearningPolicy,
     LearnInput,
     ObserveInput,
     RecallInput,
@@ -61,6 +62,8 @@ from .storage import (
     Database,
     Evaluation,
     Event,
+    LearningDecision,
+    LearningJob,
     Procedure,
     RateWindow,
     Revision,
@@ -170,7 +173,7 @@ def unproven_lines(session, tenant, revision, events_of):
         .limit(20)
     ).all()
     for evaluation in evaluations:
-        if not (evaluation.outcome or {}).get("succeeded"):
+        if not (evaluation.outcome or {}).get("succeeded") or evaluation.outcome.get("invalidated"):
             continue
         checked = True
         for event in events_of(evaluation.run_token):
@@ -185,9 +188,15 @@ def unproven_lines(session, tenant, revision, events_of):
 
 
 class MemoryService:
-    def __init__(self, settings: Settings, database=None, embeddings=None):
+    def __init__(self, settings: Settings, database=None, embeddings=None, learner=None):
         self.settings = settings
         self.db = database or Database(settings.database_url)
+        from .learning import AgentLearner
+
+        self.learner = learner or AgentLearner(settings)
+        from .learning_queue import LearningQueue
+
+        self.learning_queue = LearningQueue(self)
         self.embeddings = embeddings or Embeddings(settings)
 
     def issue_key(self, tenant, grants, label="agent"):
@@ -511,14 +520,44 @@ class MemoryService:
                     "invalid_evidence", "Evidence must reference successful tool events"
                 )
 
-    def learn(self, principal, request: LearnInput, *, auto=False):
+    def learn(self, principal, request: LearnInput, *, auto=False, _learning=None):
         request = self._clean(request)
         fingerprint = hashlib.sha256(
             json.dumps(request.model_dump(mode="json"), sort_keys=True).encode()
         ).hexdigest()
         with self.db.transaction() as session:
             run = self._run(session, principal, request.run_token)
-            if run.learned_result:
+            decision = None
+            if _learning:
+                decision = session.scalar(
+                    select(LearningDecision)
+                    .where(
+                        LearningDecision.tenant == principal.tenant,
+                        LearningDecision.run_token == run.run_token,
+                        LearningDecision.pipeline == _learning["pipeline"],
+                        LearningDecision.evidence_digest == _learning["evidence_digest"],
+                    )
+                    .with_for_update()
+                )
+                if decision and decision.status == "accepted":
+                    return decision.result
+                if decision and decision.status == "rejected":
+                    raise DomainError("learning_conflict", "This source already has a rejection")
+                if decision:
+                    reserved = session.execute(
+                        update(LearningDecision)
+                        .where(
+                            LearningDecision.decision_id == decision.decision_id,
+                            LearningDecision.status == "error",
+                        )
+                        .values(status="admitting")
+                    )
+                    if not reserved.rowcount:
+                        raise DomainError("learning_conflict", "Another admission owns this source")
+                decision = self._learning_decision(session, principal, run, _learning)
+                decision.status = "admitting"
+                session.flush()  # Unique source identity is reserved before a revision is created.
+            if run.learned_result and not _learning:
                 if run.learned_result.get("request_digest") != fingerprint:
                     raise DomainError(
                         "learning_conflict", "Learning inputs changed for a compiled run", 409
@@ -539,6 +578,22 @@ class MemoryService:
                     "invalid_evidence", "Completion evidence was pruned from the graph"
                 )
             definition.capability_signature = capability_signature(events)
+            if auto:
+                definition.provenance["auto"] = True
+            if _learning:
+                proposal, assessment = _learning["proposal"], _learning["assessment"]
+                definition.preconditions = [c.text for c in proposal.preconditions]
+                definition.provenance["learning"] = {
+                    "pipeline": _learning["pipeline"],
+                    "proposal": proposal.model_dump(mode="json"),
+                    "assessment": assessment.model_dump(mode="json"),
+                    "evidence_digest": _learning["evidence_digest"],
+                    "scope": _learning["scope"],
+                    "project_isolated": self.settings.learning_project_isolation,
+                    "naming_policy": "separate",
+                }
+                if self.settings.learning_project_isolation and _learning["scope"]:
+                    definition.environment_requirements["mm_project"] = _learning["scope"]
             # Learn from failures: compare this success with failed runs that took
             # the same sequence of actions, and record what differed.
             contrasts = []
@@ -589,6 +644,11 @@ class MemoryService:
             definition.provenance["contrast_ids"] = [item.contrast_id for item in contrasts]
             derive_boundaries(definition, events, contrasts)
             warnings.extend(refine_boundaries(definition, contrasts, self.settings))
+            if _learning:
+                # Semantic guidance uses assessed failure claims, not inferred
+                # causal advice from omitted reads or unrelated failed commands.
+                definition.avoidance_rules = [c.text for c in proposal.failure_modes]
+                definition.recovery_notes = []
             fingerprint_key = (
                 principal.tenant,
                 run.namespace,
@@ -609,6 +669,10 @@ class MemoryService:
                 if procedure.lifecycle == "retired":
                     raise DomainError(
                         "removed_skill", "A retired skill does not take new versions", 409
+                    )
+                if _learning and procedure.current_version != proposal.target_version:
+                    raise DomainError(
+                        "learning_target_changed", "Target changed during curation", 409
                     )
                 procedure.current_version += 1
                 procedure.lifecycle = "provisional"
@@ -645,6 +709,17 @@ class MemoryService:
                 )
             )
             session.flush()
+            from .memory_graph import link_learning
+
+            link_learning(
+                session,
+                principal.tenant,
+                run.namespace,
+                procedure.procedure_token,
+                procedure.current_version,
+                run.run_token,
+                _learning["proposal"] if _learning else None,
+            )
             for direction, field in (
                 ("read", "reads"),
                 ("write", "writes"),
@@ -671,6 +746,13 @@ class MemoryService:
                 "contract_version": "1",
             }
             run.learned_result = {"result": result, "request_digest": fingerprint}
+            if _learning:
+                decision.status = "accepted"
+                decision.result = {
+                    "action": "learned",
+                    "procedure_token": procedure.procedure_token,
+                    "procedure_version": procedure.current_version,
+                }
             self.audit(session, principal, run.namespace, "learn", procedure.procedure_token)
             agent = chosen_agent(self.settings) if procedure.name is None else None
             if agent:
@@ -683,22 +765,37 @@ class MemoryService:
             # Asked after learning, so a slow agent never holds up the hook that learned it.
             self.titling = threading.Thread(
                 target=self._title_skill,
-                args=(procedure.procedure_token, agent, evidence),
+                args=(
+                    principal,
+                    procedure.procedure_token,
+                    procedure.current_version,
+                    agent,
+                    evidence,
+                ),
                 daemon=True,
             )
             self.titling.start()
         return result
 
-    def _title_skill(self, token, agent, evidence):
+    def _title_skill(self, principal, token, version, agent, evidence):
         """Name a new skill in the background; on any failure the built name stays."""
+        if chosen_agent(self.settings) != agent:
+            return
         try:
             title = ask_agent(agent, evidence)
         except DomainError:
             return
         with self.db.transaction() as session:
             procedure = session.get(Procedure, token)
-            if procedure is not None and procedure.name is None:
+            if (
+                procedure is not None
+                and procedure.tenant == principal.tenant
+                and procedure.current_version == version
+                and procedure.name is None
+                and chosen_agent(self.settings) == agent
+            ):
                 procedure.name = title
+                self.audit(session, principal, procedure.namespace, "name_auto", token)
                 session.commit()
 
     def name_skill(self, principal, token, agent):
@@ -730,14 +827,30 @@ class MemoryService:
 
     def preferences(self, principal):
         """The dashboard's settings: which agent names new skills ("off" when none)."""
-        return {"skill_titles": chosen_agent(self.settings) or "off", "agents": AGENTS}
+        from .learning import chosen_learning_agent
 
-    def set_preferences(self, principal, skill_titles):
+        return {
+            "skill_titles": chosen_agent(self.settings) or "off",
+            "agents": AGENTS,
+            "skill_learning": chosen_learning_agent(self.settings) or "off",
+            "learning_locked": bool(self.settings.learning_agent),
+        }
+
+    def set_preferences(self, principal, skill_titles, skill_learning=None):
         if skill_titles not in {"off", *AGENTS}:
             raise DomainError("invalid_input", "Choose off, claude or codex", 422)
         if not any("admin" in grants for grants in principal.grants.values()):
             raise DomainError("forbidden", "Changing settings needs admin access", 403)
         choose_agent(self.settings, None if skill_titles == "off" else skill_titles)
+        if skill_learning is not None:
+            from .local import private_write
+
+            if skill_learning not in {"off", *AGENTS}:
+                raise DomainError("invalid_input", "Choose off, claude or codex", 422)
+            path = Path(self.settings.preferences_path)
+            preferences = json.loads(path.read_text())
+            preferences["skill_learning"] = skill_learning
+            private_write(path, json.dumps(preferences, indent=2) + "\n")
         return self.preferences(principal)
 
     def recall(self, principal, request: RecallInput, *, observation_run=None):
@@ -840,6 +953,11 @@ class MemoryService:
                     candidate["unproven_lines"] = unproven_lines(
                         session, principal.tenant, revision, self._run_events(session, principal)
                     )
+                from .learning import agent_learning_definition
+
+                candidate["definition"] = agent_learning_definition(
+                    candidate["definition"], candidate["unproven_lines"], candidate["successes"]
+                )
             self.audit(
                 session,
                 principal,
@@ -897,7 +1015,7 @@ class MemoryService:
             session.commit()
         return {"indexed_revisions": count, "embedding": self.embeddings.metadata()}
 
-    def evaluate(self, principal, request: EvaluateInput):
+    def evaluate(self, principal, request: EvaluateInput, *, _validate_only=False):
         request = self._clean(request)
         with self.db.transaction() as session:
             procedure = self._procedure(session, principal, request.procedure_token, "write")
@@ -909,6 +1027,17 @@ class MemoryService:
             )
             if not revision:
                 raise DomainError("not_found", "Procedure revision was not found", 404)
+            provenance = revision.definition.get("provenance", {})
+            if (
+                not _validate_only
+                and provenance.get("admission") == "legacy_pending_curation"
+                and not provenance.get("learning")
+            ):
+                raise DomainError(
+                    "learning_required",
+                    "This legacy recording needs curation before validation",
+                    409,
+                )
             if run.run_token == revision.definition["provenance"]["source_run"]:
                 raise DomainError(
                     "training_evaluation", "The training run cannot validate its own procedure"
@@ -923,6 +1052,18 @@ class MemoryService:
             events = self._events(session, run)
             if request.outcome_report.succeeded:
                 from .artifacts import inspection_only, operation_categories
+
+                requirements = revision.definition.get("environment_requirements", {})
+                for key, value in requirements.items():
+                    actual = (
+                        (run.project_scope or self._source_scope(events, run.runtime))
+                        if key == "mm_project"
+                        else run.runtime.get("environment", {}).get(key)
+                    )
+                    if actual != value:
+                        raise DomainError(
+                            "application_scope", "Execution does not meet the procedure environment"
+                        )
 
                 # Only steps that act are required; reading or searching differently is fine.
                 required = {
@@ -972,6 +1113,25 @@ class MemoryService:
                 )
                 # Check actual observed action shape and operation categories;
                 # a shell capability alone cannot prove a test or edit happened.
+                # Verifier obligations from earlier compilers survive conservative
+                # parser changes that can no longer classify a complex script.
+                for needed in revision.definition.get("experience", {}).get(
+                    "verification_commands", []
+                ):
+                    if not any(
+                        event.kind == "tool"
+                        and event.status == "success"
+                        and event.outcome_verified
+                        and event.sequence >= last_change
+                        and event.event_id in request.outcome_report.evidence_event_ids
+                        and test_covers(event.arguments.get("command"), needed)
+                        for event in events
+                    ):
+                        raise DomainError(
+                            "application_evidence",
+                            "Trace lacks compatible action/verification evidence: "
+                            "required passing tests",
+                        )
                 for step in revision.definition["steps"]:
                     operations = operation_categories(step["arguments"], step["capability"])
                     if (
@@ -1001,19 +1161,30 @@ class MemoryService:
                         )
                     ]
                     command = step["arguments"].get("command")
-                    if "verify" in operations and not (
+                    requires_verification = "verify" in operations and not (
                         isinstance(command, dict) and set(command) == {"$mm_parameter"}
-                    ):
+                    )
+                    if requires_verification:
                         stored_test = test_command(command)
-                        matches = [
+                        verification_matches = [
                             event
-                            for event in matches
+                            for event in events
+                            if event.kind == "tool"
+                            and event.status == "success"
+                            and event.outcome_verified
                             if stored_test
                             # The same tests or more, however the agent spelled the command.
                             and test_covers(event.arguments.get("command"), command)
                             and event.event_id in request.outcome_report.evidence_event_ids
                             and event.sequence >= last_change
                         ]
+                        if not verification_matches:
+                            raise DomainError(
+                                "application_evidence",
+                                "Trace lacks compatible action/verification evidence: "
+                                "required passing tests",
+                            )
+                        matches = verification_matches
                     # A shell command that changed files is a file change too: a later
                     # session may make the same change with an editor instead.
                     changes_files = step["capability"] in FILE_CHANGE or bool(
@@ -1028,6 +1199,8 @@ class MemoryService:
                             event
                             for event in events
                             if event.kind == "tool"
+                            and event.status == "success"
+                            and event.outcome_verified
                             and (changed := changed_files(event))
                             and (not wanted or wanted & changed)
                         ]
@@ -1082,6 +1255,8 @@ class MemoryService:
                 raise DomainError(
                     "metrics_conflict", "Token measurements must match available trace usage"
                 )
+            if _validate_only:
+                return {"verified": True}
             prior = session.scalar(
                 select(Evaluation).where(
                     Evaluation.tenant == principal.tenant,
@@ -1137,6 +1312,21 @@ class MemoryService:
                     )
                     procedure.updated_at = utcnow()
                 self.audit(session, principal, run.namespace, "evaluate", procedure.procedure_token)
+                if request.outcome_report.succeeded:
+                    from .memory_graph import connect, node
+
+                    connect(
+                        session,
+                        principal.tenant,
+                        run.namespace,
+                        node("run", run.run_token),
+                        "corroborates",
+                        node("skill", procedure.procedure_token, revision.version),
+                        {
+                            "event_ids": request.outcome_report.evidence_event_ids,
+                            "execution_verified": True,
+                        },
+                    )
             session.commit()
             return {
                 "successes": revision.successes,
@@ -1203,6 +1393,7 @@ class MemoryService:
                 "visibility_scope": procedure.namespace,
                 "lifecycle_status": procedure.lifecycle,
                 "needs_review": procedure.reviewed_at is None,
+                "has_custom_name": bool(procedure.name),
                 "name": procedure.name
                 or skill_name(extract_experience(revision.definition["steps"]))
                 or "",
@@ -1263,7 +1454,9 @@ class MemoryService:
 
         checked = {}
         for evaluation in evaluations:
-            if (evaluation.outcome or {}).get("succeeded"):
+            if (evaluation.outcome or {}).get("succeeded") and not evaluation.outcome.get(
+                "invalidated"
+            ):
                 name = agent(evaluation.run_token) or "unknown"
                 checked[name] = checked.get(name, 0) + 1
         source = session.get(
@@ -1301,12 +1494,25 @@ class MemoryService:
                 409,
             )
         definition = detail["definition"]
+        learning = definition["provenance"].get("learning")
+        if learning:
+            from .learning import grounded_method
+
+            method = grounded_method(definition, detail["unproven_lines"], detail["successes"])
+            if method is None:
+                raise DomainError(
+                    "unproven_guidance",
+                    "Generated guidance cites changes that independent checks have not reproduced",
+                    409,
+                )
+            learning = {"proposal": method}
         text, name = skill_export.render_proven(
             detail["summary"]["request"] or definition["title"],
             detail["summary"],
             detail["successes"],
             [*dict.fromkeys(definition.get("avoidance_rules", []))][:3],
             [*dict.fromkeys(definition.get("recovery_notes", []))][:2],
+            learning=learning,
         )
         with tempfile.TemporaryDirectory() as staging:
             draft = Path(staging) / name
@@ -1317,7 +1523,7 @@ class MemoryService:
             session.commit()
         return {**result, "procedure_token": token}
 
-    def listing(self, principal, namespace, kind, limit=20, offset=0):
+    def listing(self, principal, namespace, kind, limit=20, offset=0, *, status=None, query=""):
         principal.require(namespace, "read")
         if not 1 <= limit <= 100 or offset < 0:
             raise DomainError("pagination", "Invalid pagination", 422)
@@ -1356,6 +1562,8 @@ class MemoryService:
                         test_command(command) or command
                         for command in experience["verification_commands"]
                     ]
+                    provenance = definition.get("provenance", {})
+                    proposal = (provenance.get("learning") or {}).get("proposal")
                     return {
                         "learned_from": (
                             asked.get(definition.get("provenance", {}).get("source_run")) or ""
@@ -1363,6 +1571,15 @@ class MemoryService:
                         "changes": experience["writes"][:4],
                         "check": checks[-1:],
                         "name": skill_name(experience) or "",
+                        "admission": provenance.get("admission"),
+                        "learned_method": (
+                            {
+                                "trigger": proposal["trigger"]["text"],
+                                "principle": proposal["principle"]["text"],
+                            }
+                            if proposal
+                            else None
+                        ),
                     }
 
                 return {
@@ -1388,13 +1605,24 @@ class MemoryService:
                     "limit": limit,
                     "offset": offset,
                 }
+            conditions = [
+                Run.tenant == principal.tenant,
+                Run.namespace == namespace,
+                Run.expires_at > utcnow(),
+            ]
+            counts = dict(
+                session.execute(
+                    select(Run.status, func.count()).where(*conditions).group_by(Run.status)
+                ).all()
+            )
+            if status:
+                conditions.append(Run.status == status)
+            if query:
+                conditions.append(func.lower(Run.intent).contains(query.lower(), autoescape=True))
+            total = session.scalar(select(func.count()).select_from(Run).where(*conditions))
             rows = session.scalars(
                 select(Run)
-                .where(
-                    Run.tenant == principal.tenant,
-                    Run.namespace == namespace,
-                    Run.expires_at > utcnow(),
-                )
+                .where(*conditions)
                 .order_by(Run.created_at.desc(), Run.run_token)
                 .offset(offset)
                 .limit(limit)
@@ -1412,6 +1640,9 @@ class MemoryService:
                 ],
                 "limit": limit,
                 "offset": offset,
+                "total": total,
+                "has_more": offset + len(rows) < total,
+                "status_counts": counts,
             }
 
     def get_run(self, principal, token):
@@ -1465,6 +1696,14 @@ class MemoryService:
         """
         with self.db.transaction() as session:
             procedure = self._procedure(session, principal, token, "admin")
+            revision = session.get(Revision, (token, procedure.current_version))
+            provenance = revision.definition.get("provenance", {})
+            if provenance.get("admission") == "legacy_pending_curation" and not provenance.get(
+                "learning"
+            ):
+                raise DomainError(
+                    "learning_required", "This legacy recording needs curation before review", 409
+                )
             if procedure.reviewed_at is None:
                 procedure.reviewed_at = utcnow()
                 procedure.updated_at = utcnow()
@@ -1533,7 +1772,7 @@ class MemoryService:
 
     def auto_learn(self, principal, run_token, hint=None):
         """After a session whose tests passed: count it as a check, or learn a new skill."""
-        from .artifacts import extract_experience, operation_categories
+        from .artifacts import documentation_only, extract_experience, operation_categories
 
         with self.db.session() as session:
             run = self._run(session, principal, run_token, "write")
@@ -1542,10 +1781,22 @@ class MemoryService:
             events = self._events(session, run)
             namespace = run.namespace
         tools = [e for e in events if e.kind == "tool" and e.status == "success"]
+        last_change = max(
+            (
+                e.sequence
+                for e in events
+                if e.kind == "tool"
+                and changed_files(e)
+                and not documentation_only(e.arguments, e.effect, e.capability)
+            ),
+            default=-1,
+        )
         verifiers = [
             e
             for e in tools
-            if e.outcome_verified and "verify" in operation_categories(e.arguments, e.capability)
+            if e.outcome_verified
+            and e.sequence >= last_change
+            and "verify" in operation_categories(e.arguments, e.capability)
         ]
         if not verifiers:
             raise DomainError("unverified_run", "The session has no passing test command")
@@ -1617,6 +1868,16 @@ class MemoryService:
             validated.append({"procedure_token": token, "successes": result.get("successes")})
         if validated:
             return {"action": "checked", "procedures": validated}
+        from .learning import chosen_learning_agent
+
+        if chosen_learning_agent(self.settings):
+            return self.distill_run(principal, run_token)
+        # The original, local compiler remains usable without an LLM account.
+        # An opted-in curator's rejection/outage never falls through this path.
+        with self.db.session() as session:
+            stored = self._run(session, principal, run_token, "write").learned_result
+            if stored:
+                return {"action": "learned", **stored["result"], "cached": True}
         try:
             learned = self.learn(
                 principal,
@@ -1625,10 +1886,8 @@ class MemoryService:
                     completion_proof={
                         "succeeded": True,
                         "evidence_event_ids": [verifiers[-1].event_id],
-                        "verifier": "tool_assertion",
                         "summary": "Tests passed after the last change",
                     },
-                    learning_policy={},
                 ),
                 auto=True,
             )
@@ -1636,14 +1895,437 @@ class MemoryService:
             if error.code == "removed_skill":
                 return {"action": "none", "reason": "removed_skill"}
             raise
-        with self.db.transaction() as session:
-            revision = session.get(Revision, (learned["procedure_token"], 1))
-            revision.definition = {
-                **revision.definition,
-                "provenance": {**revision.definition["provenance"], "auto": True},
+        return {"action": "learned", **learned}
+
+    @staticmethod
+    def _source_scope(events, runtime):
+        """A stable project identity, independent of machine-specific prompt text."""
+        configured = runtime.get("environment", {}).get("mm_project")
+        if configured:
+            return configured
+        from .workspace import project_root
+
+        directories = {
+            event.response.get("cwd")
+            for event in events
+            if isinstance(event.response, dict) and event.response.get("cwd")
+        }
+        roots = {project_root(directory)[0] or directory for directory in directories}
+        if len(roots) > 1:
+            raise DomainError("learning_scope", "A procedure cannot mix project scopes")
+        return hashlib.sha256(next(iter(roots)).encode()).hexdigest() if roots else None
+
+    @staticmethod
+    def _learning_decision(session, principal, run, context):
+        decision = session.scalar(
+            select(LearningDecision).where(
+                LearningDecision.tenant == principal.tenant,
+                LearningDecision.run_token == run.run_token,
+                LearningDecision.pipeline == context["pipeline"],
+                LearningDecision.evidence_digest == context["evidence_digest"],
+            )
+        )
+        if decision is None:
+            decision = LearningDecision(
+                tenant=principal.tenant,
+                namespace=run.namespace,
+                run_token=run.run_token,
+                pipeline=context["pipeline"],
+                evidence_digest=context["evidence_digest"],
+                status="error",
+                reason="Pending decision",
+                attempts=0,
+            )
+            session.add(decision)
+        decision.attempts += 1
+        decision.proposal = (
+            context["proposal"].model_dump(mode="json") if context.get("proposal") else None
+        )
+        decision.assessment = (
+            context["assessment"].model_dump(mode="json") if context.get("assessment") else None
+        )
+        decision.reason = context.get("reason", "supported")[:500]
+        return decision
+
+    def distill_run(self, principal, run_token, *, dry_run=False, rebuild=False):
+        """Propose, curate and reconcile one closed source. No generated tool execution."""
+        import re
+
+        from .learning import PIPELINE, build_evidence, evidence_digest, validate_proposal
+
+        with self.db.session() as session:
+            run = self._run(session, principal, run_token, "write")
+            events = self._events(session, run)
+            from .artifacts import documentation_only
+
+            last_change = max(
+                (
+                    e.sequence
+                    for e in events
+                    if e.kind == "tool"
+                    and changed_files(e)
+                    and not documentation_only(e.arguments, e.effect, e.capability)
+                ),
+                default=-1,
+            )
+            verifiers = [
+                e
+                for e in events
+                if e.kind == "tool"
+                and e.status == "success"
+                and e.outcome_verified
+                and e.sequence >= last_change
+                and test_command(e.arguments.get("command"))
+            ]
+            if not verifiers:
+                raise DomainError("unverified_run", "No passing test follows the recorded changes")
+            proof = CompletionProof(
+                succeeded=True,
+                evidence_event_ids=[verifiers[-1].event_id],
+                summary="Tests passed after the last recorded change",
+            )
+            self.validate_proof(events, proof)
+            definition, _ = compile_trace(
+                run.intent, events, LearningPolicy(), run_token, proof.model_dump(mode="json")
+            )
+            if session.get(
+                Tombstone,
+                (
+                    principal.tenant,
+                    run.namespace,
+                    skill_fingerprint(definition.model_dump(mode="json")),
+                ),
+            ):
+                return {"action": "none", "reason": "removed_skill"}
+            scope = run.project_scope or self._source_scope(events, run.runtime)
+            existing, corrections, later_observations = [], [], []
+            rows = session.execute(
+                select(Procedure, Revision)
+                .join(
+                    Revision,
+                    (Revision.procedure_token == Procedure.procedure_token)
+                    & (Revision.version == Procedure.current_version),
+                )
+                .where(
+                    Procedure.tenant == principal.tenant,
+                    Procedure.namespace == run.namespace,
+                    Procedure.lifecycle != "retired",
+                )
+                .order_by(Procedure.updated_at.desc())
+                .limit(self.settings.candidate_limit)
+            ).all()
+            for procedure, revision in rows:
+                source = session.get(
+                    Run, (principal.tenant, revision.definition["provenance"]["source_run"])
+                )
+                prior_scope = (revision.definition["provenance"].get("learning") or {}).get("scope")
+                if prior_scope is None and source:
+                    prior_scope = source.project_scope or self._source_scope(
+                        self._events(session, source), source.runtime
+                    )
+                if self.settings.learning_project_isolation and scope != prior_scope:
+                    continue
+                learning = revision.definition["provenance"].get("learning") or {}
+                original_events = self._events(session, source) if source else []
+                original_time = (
+                    original_events[0].occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
+                    if original_events and original_events[0].occurred_at
+                    else source.created_at
+                    if source
+                    else revision.created_at
+                )
+                existing.append(
+                    {
+                        "procedure_token": procedure.procedure_token,
+                        "version": revision.version,
+                        "title": revision.definition["title"],
+                        "source_time": original_time.isoformat(),
+                        "procedure": learning.get("proposal"),
+                        "net_edits": extract_experience(revision.definition["steps"])["edits"][:4],
+                    }
+                )
+            source_time = (
+                events[0].occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
+                if events[0].occurred_at
+                else run.created_at
+            )
+            later = session.scalars(
+                select(Run)
+                .where(
+                    Run.tenant == principal.tenant,
+                    Run.namespace == run.namespace,
+                    Run.run_token != run_token,
+                )
+                .order_by(Run.created_at.desc())
+                .limit(1000)
+            ).all()
+            from .artifacts import patch_edits, targets
+
+            source_files = set(definition.experience["writes"])
+            for later_run in later:
+                later_events = self._events(session, later_run)
+                if (
+                    not later_events
+                    or (
+                        later_run.project_scope
+                        or self._source_scope(later_events, later_run.runtime)
+                    )
+                    != scope
+                ):
+                    continue
+                later_time = (
+                    later_events[0].occurred_at.astimezone(timezone.utc).replace(tzinfo=None)
+                    if later_events[0].occurred_at
+                    else later_run.created_at
+                )
+                if later_time > source_time:
+                    if re.search(
+                        r"\b(revert|undo|instead|remove|replace|switch|stop)\b|don't|do not",
+                        later_run.intent,
+                        re.I,
+                    ):
+                        corrections.append(
+                            {
+                                "id": "user:" + later_run.run_token,
+                                "explicit": True,
+                                "text": later_run.intent[:4000],
+                                "occurred_at": later_time.isoformat(),
+                            }
+                        )
+                    writes = []
+                    for event in later_events:
+                        if event.kind != "tool":
+                            continue
+                        overlap = source_files & set(
+                            targets(event.arguments, event.effect, event.capability)[1]
+                        )
+                        if not overlap:
+                            continue
+                        edits = [
+                            e
+                            for e in patch_edits(event.arguments, event.capability)
+                            if e["file"] in overlap
+                        ]
+                        write = {
+                            "event_id": event.event_id,
+                            "status": event.status,
+                            "verified": event.outcome_verified,
+                            "files": sorted(overlap),
+                            "edits": edits,
+                        }
+                        if not edits and isinstance(event.arguments.get("command"), str):
+                            write["recorded_mutation_command"] = event.arguments["command"][:4000]
+                        writes.append(write)
+                    if writes:
+                        later_observations.append(
+                            {
+                                "source_run": later_run.run_token,
+                                "request": later_run.intent[:1000],
+                                "occurred_at": later_time.isoformat(),
+                                "writes": writes[:6],
+                            }
+                        )
+            evidence = build_evidence(
+                run.intent,
+                events,
+                definition,
+                existing[:12],
+                corrections[:12],
+                later_observations[:12],
+            )
+            evidence["source_time"] = source_time.isoformat()
+            if re.search(
+                r"\b(revert|undo|instead|replace|switch|stop)\b|don't|do not", run.intent, re.I
+            ):
+                evidence["corrections"].append(
+                    {
+                        "id": "user:" + run_token,
+                        "explicit": True,
+                        "text": run.intent[:4000],
+                        "occurred_at": source_time.isoformat(),
+                    }
+                )
+            # Existing memory may change after this decision. The identity of this
+            # source must not change merely because it created its own target.
+            digest = evidence_digest({k: v for k, v in evidence.items() if k != "existing"})
+            context = {"pipeline": PIPELINE, "evidence_digest": digest, "scope": scope}
+            previous = session.scalar(
+                select(LearningDecision).where(
+                    LearningDecision.tenant == principal.tenant,
+                    LearningDecision.run_token == run_token,
+                    LearningDecision.pipeline == PIPELINE,
+                    LearningDecision.evidence_digest == digest,
+                )
+            )
+            if previous and previous.status != "error":
+                return {**previous.result, "cached": True}
+            legacy = (
+                (run.learned_result or {}).get("result", {}).get("procedure_token")
+                if rebuild
+                else None
+            )
+        try:
+            proposal, assessment = self.learner.decide(evidence)
+            validate_proposal(proposal, evidence)
+            context.update(proposal=proposal, assessment=assessment, reason=assessment.explanation)
+            if assessment.accept and proposal.action != "reject":
+                if assessment.reason != "supported":
+                    raise DomainError(
+                        "learning_assessment", "Acceptance requires supported evidence"
+                    )
+                if dry_run:
+                    return {
+                        "action": proposal.action,
+                        "proposal": proposal.model_dump(),
+                        "assessment": assessment.model_dump(),
+                        "evidence_digest": digest,
+                    }
+                if proposal.action == "corroborate":
+                    from .memory_graph import connect, node
+
+                    with self.db.transaction() as session:
+                        current_run = self._run(session, principal, run_token)
+                        target = self._procedure(session, principal, proposal.target, "write")
+                        if (
+                            target.namespace != current_run.namespace
+                            or target.current_version != proposal.target_version
+                        ):
+                            raise DomainError(
+                                "learning_target_changed", "Target changed during curation"
+                            )
+                        result = {
+                            "action": "corroborated",
+                            "procedure_token": proposal.target,
+                            "procedure_version": proposal.target_version,
+                        }
+                        connect(
+                            session,
+                            principal.tenant,
+                            current_run.namespace,
+                            node("run", run_token),
+                            "corroborates",
+                            node("skill", proposal.target, proposal.target_version),
+                            {"execution_verified": False, "decision": digest},
+                        )
+                        decision = self._learning_decision(session, principal, current_run, context)
+                        decision.status, decision.result = "accepted", result
+                        session.commit()
+                    return result
+                learned = self.learn(
+                    principal,
+                    LearnInput(
+                        run_token=run_token,
+                        completion_proof=proof,
+                        learning_policy={"revise_procedure_token": proposal.target},
+                    ),
+                    auto=True,
+                    _learning=context,
+                )
+                return {
+                    "action": "learned",
+                    "procedure_token": learned["procedure_token"],
+                    "procedure_version": learned["procedure_version"],
+                }
+            result = {
+                "action": "rejected",
+                "reason": assessment.reason,
+                "explanation": assessment.explanation,
             }
-            session.commit()
-        return {"action": "learned", "procedure_token": learned["procedure_token"]}
+            if dry_run:
+                return {
+                    **result,
+                    "proposal": proposal.model_dump(),
+                    "assessment": assessment.model_dump(),
+                }
+            with self.db.transaction() as session:
+                current_run = self._run(session, principal, run_token)
+                decision = self._learning_decision(session, principal, current_run, context)
+                decision.status, decision.result = "rejected", result
+                if legacy:
+                    procedure = self._procedure(session, principal, legacy, "write")
+                    if procedure.namespace != current_run.namespace:
+                        raise DomainError("learning_scope", "Cannot quarantine an unrelated skill")
+                    procedure.lifecycle, procedure.reviewed_at = "flagged", None
+                    revision = session.get(Revision, (legacy, procedure.current_version))
+                    revision.validation_status = "flagged"
+                session.commit()
+            return result
+        except DomainError as error:
+            result = {"action": "deferred", "reason": error.code}
+            if not dry_run:
+                with self.db.transaction() as session:
+                    current_run = self._run(session, principal, run_token)
+                    context["reason"] = error.message
+                    decision = self._learning_decision(session, principal, current_run, context)
+                    if decision.status in {"accepted", "rejected"}:
+                        return decision.result
+                    decision.status, decision.result = "error", result
+                    session.commit()
+            return result
+
+    def memory_graph(self, principal, namespace, root=None, limit=100):
+        from .memory_graph import read_graph
+
+        principal.require(namespace, "read")
+        if not 1 <= limit <= 500:
+            raise DomainError("graph_limit", "Graph limit must be between 1 and 500", 422)
+        with self.db.session() as session:
+            if root:
+                procedure = self._procedure(session, principal, root)
+                if procedure.namespace != namespace:
+                    raise DomainError("not_found", "Graph root was not found in this scope", 404)
+            return read_graph(session, principal.tenant, namespace, root, limit)
+
+    def learning_history(self, principal, namespace, limit=50):
+        principal.require(namespace, "read")
+        with self.db.session() as session:
+            rows = session.scalars(
+                select(LearningDecision)
+                .where(
+                    LearningDecision.tenant == principal.tenant,
+                    LearningDecision.namespace == namespace,
+                )
+                .order_by(LearningDecision.created_at.desc())
+                .limit(max(1, min(limit, 100)))
+            ).all()
+            jobs = session.scalars(
+                select(LearningJob)
+                .where(
+                    LearningJob.tenant == principal.tenant,
+                    LearningJob.namespace == namespace,
+                    LearningJob.status != "complete",
+                )
+                .order_by(LearningJob.available_at)
+                .limit(max(1, min(limit, 100)))
+            ).all()
+            pending = [
+                {
+                    "id": job.job_id,
+                    "run_token": job.run_token,
+                    "status": job.status,
+                    "reason": (job.result or {}).get("reason", "Waiting for curation"),
+                    "attempts": job.attempts,
+                }
+                for job in jobs
+            ]
+            return {
+                "items": [
+                    *pending,
+                    *[
+                        {
+                            "id": d.decision_id,
+                            "run_token": d.run_token,
+                            "status": d.status,
+                            "reason": d.reason,
+                            "attempts": d.attempts,
+                            "result": d.result,
+                            "proposal": d.proposal,
+                            "assessment": d.assessment,
+                        }
+                        for d in rows
+                    ],
+                ]
+            }
 
     def create_sign_in_code(self, tenant, grants, minutes=5):
         """Administrative CLI only: a one-time code the dashboard swaps for a key."""
@@ -1704,6 +2386,7 @@ class MemoryService:
                     Procedure.namespace == namespace,
                 )
             ).all()
+            metrics = [e for e in metrics if not e.outcome.get("invalidated")]
             savings = {"tool_calls": 0, "duration_ms": 0.0, "tokens": 0, "cost_usd": 0.0}
             pairs = {key: 0 for key in savings}
             for evaluation in metrics:

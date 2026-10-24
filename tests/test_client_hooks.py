@@ -1279,7 +1279,16 @@ def test_context_lookups_and_parallel_reads_allow_real_fix_learning_and_reuse(
     assert pointer["procedure"] == skill["procedure_token"]
 
 
-@pytest.mark.parametrize("name", ["webrun", "mcp__codex_apps__github__fetch_file"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "webrun",
+        "mcp__codex_apps__github__fetch_file",
+        "mcp__codex_apps__github__fetch_workflow_job_logs",
+        "mcp__codex_apps__github__list_pull_request_review_threads",
+        "mcp__codex_app__attach_artifact",
+    ],
+)
 def test_context_only_sessions_are_complete_but_unverified(
     codex_hook_host, service, principal, name
 ):
@@ -1315,6 +1324,351 @@ def test_unknown_actions_still_block_learning(codex_hook_host, service, principa
     completion = service.get_run(principal, run["run_token"])["events"][-1]
     assert "unmapped_tool:" + name in completion["response"]["reason"]
     assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+def test_browser_scripts_are_recorded_but_local_tests_cannot_attest_them(
+    codex_hook_host, service, principal
+):
+    config, *_ = codex_hook_host
+    run_hook(config, "codex", payload("UserPromptSubmit", prompt="Change a browser setting"))
+    fields = {
+        "tool_name": "mcp__cua_repl__js",
+        "tool_use_id": "browser",
+        "tool_input": {"code": "await app.click(12)"},
+    }
+    run_hook(config, "codex", payload("PreToolUse", **fields))
+    run_hook(
+        config,
+        "codex",
+        payload("PostToolUse", **fields, tool_response={"isError": False, "content": []}),
+    )
+    codex_plain_session(config, "turn-a", "Change a browser setting", "Ran 4 tests\n\nOK")
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert run["status"] == "unverified"
+    events = service.get_run(principal, run["run_token"])["events"]
+    browser = next(e for e in events if e["capability"] == "browser.interact")
+    assert browser["arguments"] == fields["tool_input"]
+    assert browser["effect"] == "destructive" and browser["exploratory"]
+    assert not browser["outcome_verified"] and events[-1]["capture_complete"]
+    assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+def test_completed_parallel_commands_keep_a_complete_record_without_teaching(
+    codex_hook_host, service, principal
+):
+    config, *_ = codex_hook_host
+    run_hook(config, "codex", payload("UserPromptSubmit", prompt="Inspect two projects"))
+    for event in ("PreToolUse", "PostToolUse"):
+        for source in ("first", "second"):
+            run_hook(
+                config,
+                "codex",
+                payload(
+                    event,
+                    tool_name="Bash",
+                    tool_use_id=source,
+                    tool_input={"command": "python inspect_project.py"},
+                    tool_response={"exit_code": 0},
+                ),
+            )
+    run_hook(config, "codex", payload("Stop"))
+    [run] = service.listing(principal, "team", "runs")["items"]
+    events = service.get_run(principal, run["run_token"])["events"]
+    assert run["status"] == "unverified" and len(events) == 4
+    assert events[-1]["capture_complete"] and not events[-1]["outcome_verified"]
+    assert "parallel_tool_dependencies_unknown" in events[-1]["response"]["capture_gaps"]
+    assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+@pytest.mark.parametrize(
+    ("mismatch", "exit_code", "expected"),
+    [
+        (None, 0, "success"),
+        (None, 1, "failure"),
+        ("turn", 0, "unverified"),
+        ("session", 0, "unverified"),
+        ("source", 0, "unverified"),
+        ("command", 0, "unverified"),
+        ("cwd", 0, "unverified"),
+    ],
+)
+def test_native_exit_status_requires_matching_execution_metadata(
+    codex_hook_host, service, principal, tmp_path, mismatch, exit_code, expected
+):
+    config, *_ = codex_hook_host
+    transcript = tmp_path / "native.jsonl"
+    item = {
+        "type": "CommandExecution",
+        "id": "tests",
+        "command": ["/bin/sh", "-c", "pytest -q"],
+        "cwd": "/example",
+        "status": "failed" if exit_code else "completed",
+        "exit_code": exit_code,
+        "aggregated_output": "runner finished",
+    }
+    event = {"type": "item_completed", "turn_id": "turn-a", "thread_id": "session-a", "item": item}
+    if mismatch == "turn":
+        event["turn_id"] = "another-turn"
+    if mismatch == "session":
+        event["thread_id"] = "another-session"
+    if mismatch == "source":
+        item["id"] = "another-call"
+    if mismatch == "command":
+        item["command"][-1] = "echo 'pytest -q'"
+    if mismatch == "cwd":
+        item["cwd"] = "/another-project"
+    transcript.write_text(json.dumps({"type": "event_msg", "payload": event}) + "\n")
+
+    def hook(event, **fields):
+        return run_hook(config, "codex", payload(event, transcript_path=str(transcript), **fields))
+
+    hook("UserPromptSubmit", prompt="Fix rounding")
+    edit = {
+        "tool_name": "apply_patch",
+        "tool_use_id": "edit",
+        "tool_input": {
+            "input": "*** Begin Patch\n*** Update File: app/rounding.py\n@@\n"
+            "-int(x)\n+round(x)\n*** End Patch"
+        },
+    }
+    hook("PreToolUse", **edit)
+    hook("PostToolUse", **edit, tool_response="Success")
+    fields = {"tool_name": "Bash", "tool_use_id": "tests", "tool_input": {"command": "pytest -q"}}
+    hook("PreToolUse", **fields)
+    hook("PostToolUse", **fields, tool_response="runner finished")
+    hook("PostToolUse", **fields, tool_response="runner finished")  # exact retry
+    hook("Stop")
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert run["status"] == expected
+    assert len(service.listing(principal, "team", "procedures")["items"]) == (expected == "success")
+
+
+def test_missing_finish_without_native_receipt_stays_incomplete(
+    codex_hook_host, service, principal
+):
+    config, *_ = codex_hook_host
+    run_hook(config, "codex", payload("UserPromptSubmit", prompt="Run a command"))
+    run_hook(
+        config,
+        "codex",
+        payload(
+            "PreToolUse",
+            tool_name="Bash",
+            tool_use_id="missing",
+            tool_input={"command": "python update.py"},
+        ),
+    )
+    run_hook(config, "codex", payload("Stop"))
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert run["status"] == "incomplete"
+    assert service.listing(principal, "team", "procedures")["items"] == []
+
+
+@pytest.mark.parametrize("next_prompt", [False, True])
+@pytest.mark.parametrize("native_available", [False, True])
+def test_stdout_only_results_wait_for_native_metadata_before_upload(
+    codex_hook_host, service, principal, tmp_path, next_prompt, native_available
+):
+    config, _, _, connect = codex_hook_host
+    transcript = tmp_path / "late-native.jsonl"
+    transcript.touch()
+
+    def hook(event, **fields):
+        return run_hook(config, "codex", payload(event, transcript_path=str(transcript), **fields))
+
+    hook("UserPromptSubmit", prompt="Inspect the project")
+    fields = {
+        "tool_name": "Bash",
+        "tool_use_id": "inspect",
+        "tool_input": {"command": "python inspect.py"},
+    }
+    hook("PreToolUse", **fields)
+    hook("PostToolUse", **fields, tool_response="inspected")
+    [run] = service.listing(principal, "team", "runs")["items"]
+    assert [e["kind"] for e in service.get_run(principal, run["run_token"])["events"]] == ["intent"]
+    if native_available:
+        transcript.write_text(
+            json.dumps(
+                {
+                    "type": "event_msg",
+                    "payload": {
+                        "type": "item_completed",
+                        "thread_id": "session-a",
+                        "turn_id": "turn-a",
+                        "item": {
+                            "type": "CommandExecution",
+                            "id": "inspect",
+                            "cwd": "/example",
+                            "command": ["/bin/sh", "-c", "python inspect.py"],
+                            "status": "completed",
+                            "exit_code": 0,
+                            "aggregated_output": "inspected",
+                        },
+                    },
+                }
+            )
+            + "\n"
+        )
+    hook("PostToolUse", **fields, tool_response="inspected")
+    if next_prompt:
+        hook("UserPromptSubmit", turn_id="next", prompt="Explain the result")
+    else:
+        hook("Stop")
+    trace = service.get_run(principal, run["run_token"])
+    assert trace["status"] == "unverified" and len(trace["events"]) == 3
+    assert trace["events"][-1]["capture_complete"]
+    tool = trace["events"][1]
+    assert tool["outcome_verified"] is native_available
+    if native_available:
+        assert tool["response"]["capture_source"] == "codex_transcript"
+    with connect("http://127.0.0.1:8080", os.environ["MM_API_KEY"]) as client:
+        queue = HookQueue(json.loads(config.read_text())["state_dir"], client.capture_identity)
+        try:
+            assert not queue.db.execute(
+                "SELECT 1 FROM pending_calls WHERE run=?", (run["run_token"],)
+            ).fetchone()
+            assert not queue.db.execute(
+                "SELECT 1 FROM events WHERE run=? AND ack=0", (run["run_token"],)
+            ).fetchone()
+        finally:
+            queue.close()
+
+
+def test_native_missing_command_results_recover_and_learn_over_real_http(
+    tmp_path, remote_server, credential, service, principal
+):
+    """Actual commands + separate hook processes + HTTP delivery + learning/recall.
+
+    Native envelopes use the same IDs/fields as the desktop transcript. There is
+    no pre-seeded skill, no supplied success attestation, and no model invocation.
+    """
+    repo = git_project(tmp_path)
+    (repo / "tests").mkdir()
+    (repo / "tests/test_rounding.py").write_text(
+        "import unittest\nfrom app.rounding import cents\n"
+        "class Rounding(unittest.TestCase):\n"
+        "    def test_fraction(self):\n        self.assertEqual(cents(1.9), 2)\n"
+    )
+    config = tmp_path / "hooks.json"
+    config.write_text(
+        json.dumps(
+            {"url": remote_server, "namespace": "team", "state_dir": str(tmp_path / "state")}
+        )
+    )
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.touch()
+    environment = {**os.environ, "MM_API_KEY": credential["api_key"]}
+    command = "python3 -m unittest discover -s tests -v"
+
+    def hook(event, turn, **fields):
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "musclememory",
+                "hooks",
+                "receive",
+                "--client",
+                "codex",
+                "--config",
+                str(config),
+            ],
+            input=json.dumps(
+                payload(
+                    event, turn_id=turn, cwd=str(repo), transcript_path=str(transcript), **fields
+                )
+            ),
+            text=True,
+            capture_output=True,
+            env=environment,
+            timeout=20,
+        )
+        assert result.returncode == 0, result.stderr
+        assert not result.stderr, result.stderr
+        return json.loads(result.stdout)
+
+    def execute(turn, source, cmd, expected, *, post=True):
+        fields = {"tool_name": "Bash", "tool_use_id": source, "tool_input": {"command": cmd}}
+        hook("PreToolUse", turn, **fields)
+        result = subprocess.run(cmd, shell=True, cwd=repo, text=True, capture_output=True)
+        assert (result.returncode == 0) is expected, result.stderr
+        item = {
+            "type": "CommandExecution",
+            "id": source,
+            "command": ["/bin/sh", "-c", cmd],
+            "cwd": str(repo),
+            "status": "completed" if expected else "failed",
+            "exit_code": result.returncode,
+            "aggregated_output": result.stdout + result.stderr,
+        }
+        if post:
+            # This is the real desktop ordering: the finish hook runs before
+            # the native item_completed record is appended to the transcript.
+            hook("PostToolUse", turn, **fields, tool_response=result.stdout + result.stderr)
+        with transcript.open("a") as stream:
+            stream.write(
+                json.dumps(
+                    {
+                        "type": "event_msg",
+                        "payload": {
+                            "type": "item_completed",
+                            "turn_id": turn,
+                            "thread_id": "session-a",
+                            "item": item,
+                        },
+                    }
+                )
+                + "\n"
+            )
+
+    assert service.listing(principal, "team", "procedures")["items"] == []
+    for index in range(3):
+        turn = f"native-{index}"
+        (repo / "app/rounding.py").write_text("def cents(x):\n    return int(x)\n")
+        hook("UserPromptSubmit", turn, prompt="Fix rounding in app/rounding.py")
+        for name in (
+            "mcp__codex_apps__github__fetch_workflow_job_logs",
+            "mcp__codex_apps__github__list_pull_request_review_threads",
+        ):
+            fields = {"tool_name": name, "tool_use_id": name}
+            hook("PreToolUse", turn, **fields)
+            hook("PostToolUse", turn, **fields, tool_response={"content": []})
+        execute(turn, "red", command, False)
+        edit = (
+            'python3 -c "from pathlib import Path; '
+            "Path('app/rounding.py').write_text('def cents(x):\\n    return round(x)\\n')\""
+        )
+        # Missing edit result is recovered before the next test starts, so it
+        # does not become a phantom parallel call or an unfinished action.
+        execute(turn, "edit", edit, True, post=False)
+        # Missing test result is recovered at Stop, with its actual exit code.
+        execute(turn, "green", command, True, post=index != 0)
+        hook("Stop", turn)
+        hook("Stop", turn)  # repeated endings must not learn or count twice
+
+    runs = service.listing(principal, "team", "runs")["items"]
+    assert len(runs) == 3 and all(r["status"] == "success" for r in runs)
+    for run in runs:
+        events = service.get_run(principal, run["run_token"])["events"]
+        assert [e["status"] for e in events if e["kind"] == "tool"] == [
+            "failure",
+            "success",
+            "success",
+        ]
+        assert events[-1]["capture_complete"] and events[-1]["outcome_verified"]
+        assert all(
+            e["response"]["capture_source"] == "codex_transcript"
+            for e in events
+            if e["kind"] == "tool"
+        )
+    [skill] = service.listing(principal, "team", "procedures")["items"]
+    assert skill["auto_learned"] and skill["needs_review"] and skill["successes"] == 2
+    service.approve(principal, skill["procedure_token"])
+    output = hook("UserPromptSubmit", "fresh", prompt="Fix rounding in app/rounding.py")
+    assert (
+        json.loads(output["hookSpecificOutput"]["additionalContext"])["procedure"]
+        == skill["procedure_token"]
+    )
 
 
 def test_a_command_beside_edits_is_kept_but_proves_nothing(tmp_path):

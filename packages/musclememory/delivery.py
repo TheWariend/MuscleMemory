@@ -42,14 +42,25 @@ def render_pointer(result, budget=350):
     candidate = result["candidates"][0]
     definition = candidate["definition"]
     from .artifacts import extract_experience, proven_edits
+    from .learning import agent_learning_definition
+
+    definition = agent_learning_definition(
+        definition, candidate.get("unproven_lines", []), candidate.get("successes", 0)
+    )
 
     # Derive from immutable step arguments so older revisions get the same renderer.
     experience = extract_experience(definition["steps"])
+    learning = definition.get("provenance", {}).get("learning", {})
+    proposal = learning.get("proposal") or {}
     pointer = {
         "notice": NOTICE,
         "procedure": candidate["procedure_token"],
         "version": candidate["procedure_version"],
         "title": definition["title"][:160],
+        "when": (proposal.get("trigger") or {}).get("text", ""),
+        "principle": (proposal.get("principle") or {}).get("text", ""),
+        "adapt": (proposal.get("adaptation") or {}).get("text", ""),
+        "method": [step["text"] for step in proposal.get("steps", [])],
         "changed_files": experience["writes"][:6],
         "verify": experience["verification_commands"][-1:],
         # Lines no independent check reproduced are withheld, not handed on.
@@ -59,6 +70,8 @@ def render_pointer(result, budget=350):
         "avoid": definition.get("avoidance_rules", [])[:1],
         "permissions": definition.get("required_permissions", []),
     }
+    if learning.get("withheld"):
+        pointer["method_withheld"] = "Cited changes have not been independently reproduced."
     if result.get("inspection_available", True):
         pointer["inspect"] = "musclememory_inspect"
     if result.get("file_warning"):
@@ -89,12 +102,20 @@ def render_pointer(result, budget=350):
         "actions",
         "read_files",
         "title",
+        "adapt",
     ):
         while token_count(serialize()) > budget and field in pointer:
             if isinstance(pointer[field], list) and len(pointer[field]) > 1:
                 pointer[field].pop()
             else:
                 del pointer[field]
+    # A distilled method gets the budget before incidental code hunks. Preserve
+    # complete instructions: never truncate a method into a misleading prefix.
+    if token_count(serialize()) > budget and "method" in pointer:
+        pointer.pop("edits", None)
+    if token_count(serialize()) > budget:
+        pointer.pop("method", None)
+        pointer.pop("when", None)
     while token_count(serialize()) > budget and pointer.get("edits"):
         # Prefer useful added lines, then remove whole hunks. No clipped code strings.
         with_before = next((item for item in reversed(pointer["edits"]) if "before" in item), None)
@@ -117,7 +138,15 @@ def render_pointer(result, budget=350):
     text = serialize()
     useful = any(
         pointer.get(field)
-        for field in ("changed_files", "read_files", "edits", "actions", "verify")
+        for field in (
+            "principle",
+            "method",
+            "changed_files",
+            "read_files",
+            "edits",
+            "actions",
+            "verify",
+        )
     )
     return text if useful and token_count(text) <= budget else ""
 

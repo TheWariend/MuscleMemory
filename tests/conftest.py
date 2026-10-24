@@ -26,10 +26,54 @@ def isolated_runtime(monkeypatch):
 
 
 @pytest.fixture
-def service(tmp_path):
+def fixture_learner():
+    """Explicit model double for protocol fixtures; never runs a user's paid CLI."""
+    from musclememory.learning import Assessment, Claim, Proposal
+
+    class FixtureLearner:
+        def decide(self, evidence):
+            event = next(
+                e for e in evidence["events"] if e["status"] == "success" and e["verified"]
+            )
+            return Proposal(
+                action="create",
+                reason="Synthetic proposal for protocol coverage",
+                title="Apply the fixture regression correction",
+                principle=Claim(
+                    text="Synthetic fixture invariant for regression coverage",
+                    evidence_event_ids=[event["id"]],
+                ),
+                adaptation=Claim(
+                    text="Adapt the fixture input while retaining its invariant",
+                    evidence_event_ids=[event["id"]],
+                ),
+                trigger=Claim(
+                    text="Use for this fixture's related regression",
+                    evidence_event_ids=[event["id"]],
+                ),
+                steps=[
+                    Claim(
+                        text="Apply the supported correction and check its regression suite",
+                        evidence_event_ids=[event["id"]],
+                    )
+                ],
+            ), Assessment(
+                accept=True,
+                reason="supported",
+                explanation="Synthetic assessment for protocol coverage",
+            )
+
+    return FixtureLearner()
+
+
+@pytest.fixture
+def service(tmp_path, fixture_learner):
     url = f"sqlite:///{tmp_path / 'memory.db'}"
     migrate(url)
-    memory = MemoryService(Settings(database_url=url))
+    memory = MemoryService(
+        Settings(database_url=url, learning_background=False, learning_agent="codex"),
+        learner=fixture_learner,
+    )
     yield memory
     memory.db.engine.dispose()
 
@@ -53,7 +97,29 @@ def http(service, credential):
 
 
 @pytest.fixture
-def remote_server(service):
+def remote_server(service, tmp_path):
+    # Exercise the real subprocess/JSON path with a deterministic CLI double.
+    # No fixture may invoke a signed-in user model or bill inference.
+    fake_cli = tmp_path / "bin"
+    fake_cli.mkdir()
+    program = fake_cli / "codex"
+    program.write_text(
+        f"#!{sys.executable}\n"
+        "import json, pathlib, sys\n"
+        "body = json.loads(sys.stdin.read().split('\\nEvidence:\\n', 1)[1])\n"
+        "if 'proposal' in body:\n"
+        " result = dict(accept=True, reason='supported', "
+        "explanation='Synthetic fixture assessment')\n"
+        "else:\n"
+        " event = next(e for e in body['events'] if e['status'] == 'success' and e['verified'])\n"
+        " claim = dict(text='Apply the fixture invariant and regression suite', "
+        "evidence_event_ids=[event['id']])\n"
+        " result = dict(action='create', reason='Synthetic fixture proposal', "
+        "title='Apply the fixture correction', trigger=claim, principle=claim, "
+        "adaptation=claim, steps=[claim])\n"
+        "pathlib.Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text(json.dumps(result))\n"
+    )
+    program.chmod(0o700)
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         port = sock.getsockname()[1]
@@ -62,6 +128,10 @@ def remote_server(service):
         env={
             **os.environ,
             "MM_DATABASE_URL": service.settings.database_url,
+            "MM_LEARNING_AGENT": "codex",
+            "MM_LEARNING_BACKGROUND": "false",
+            "PATH": str(fake_cli) + os.pathsep + os.environ.get("PATH", ""),
+            "CODEX_HOME": str(tmp_path / "codex-home"),
         },
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,

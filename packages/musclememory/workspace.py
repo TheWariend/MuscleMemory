@@ -95,7 +95,7 @@ def _stat(root, path):
         return "missing"
 
 
-def snapshot(cwd):
+def snapshot(cwd, include_paths=()):
     """``{"root", "files"}``: size and mtime of files that differ from git (or of every file)."""
     root, is_git = project_root(cwd)
     if not root:
@@ -135,6 +135,12 @@ def snapshot(cwd):
                 files[path] = _stat(root, path)
                 if len(files) > WALK_LIMIT:
                     return None
+    # A commit can remove a path from `git status` without changing the file.
+    # Keep stat evidence for paths in the before-view so index bookkeeping is
+    # not mistaken for another source edit after the tests.
+    for path in include_paths:
+        if not ignored(path):
+            files[path] = _stat(root, path)
     return {"root": root, "files": files}
 
 

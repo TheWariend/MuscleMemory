@@ -76,7 +76,7 @@ class MuscleMemoryClient:
             f"/v1/runs/{run_token}/auto-learn",
             params={"hint": hint} if hint else None,
             json={},
-            timeout=8,  # learning embeds and stores the skill; hooks allow 10 seconds
+            timeout=8,  # Durable queue acknowledgement; native hooks allow 10 seconds.
         )
         response.raise_for_status()
         return response.json()

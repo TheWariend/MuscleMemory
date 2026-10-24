@@ -124,6 +124,109 @@ def command_parts(command):
         return []
 
 
+def shell_commands(command):
+    """Literal shell invocations, excluding heredoc bodies and embedded programs.
+
+    Unsupported/incomplete syntax yields no inferred targets or test evidence.
+    This is an evidence parser, not a shell interpreter.
+    """
+    if not isinstance(command, str) or len(command) > 48000 or redact(command) != command:
+        return []
+    if "$(" in command or "`" in command or any(chr(0xE000 + i) in command for i in range(5)):
+        return []
+    protect = {char: chr(0xE000 + i) for i, char in enumerate(";&|<>")}
+
+    def restore(value):
+        for char, marker in protect.items():
+            value = value.replace(marker, char)
+        return value
+
+    def quoted_operators(line):
+        result, quote, escaped = [], None, False
+        for char in line:
+            if escaped:
+                result.append(protect.get(char, char))
+                escaped = False
+            elif char == "\\" and quote != "'":
+                result.append(char)
+                escaped = True
+            elif quote:
+                if char == quote:
+                    quote = None
+                    result.append(char)
+                else:
+                    result.append(protect.get(char, char))
+            else:
+                if char in {"'", '"'}:
+                    quote = char
+                result.append(char)
+        return "".join(result)
+
+    try:
+        if re.match(r"^\s*(?:\S*/)?(?:sh|bash|zsh)\s", command):
+            outer = shlex.split(command)
+            if len(outer) >= 3 and outer[-2] in {"-c", "-lc"}:
+                command = outer[-1]
+        lines, pending = [], []
+        for line in command.splitlines():
+            if pending:
+                delimiter, tabs = pending[0]
+                if (line.lstrip("\t") if tabs else line) == delimiter:
+                    pending.pop(0)
+                continue
+            lexer = shlex.shlex(quoted_operators(line), posix=True, punctuation_chars=";&|<>")
+            lexer.whitespace_split = True
+            words = list(lexer)
+            index = 0
+            while index < len(words):
+                if words[index] == "<<":
+                    if index + 1 >= len(words):
+                        return []
+                    delimiter = restore(words[index + 1])
+                    tabs = delimiter.startswith("-")
+                    pending.append((delimiter[1:] if tabs else delimiter, tabs))
+                    del words[index : index + 2]
+                else:
+                    index += 1
+            # shlex separates descriptor redirects (2>&1) into 2, >&, 1.
+            # Restore that syntax so it cannot become part of test selection.
+            merged, index = [], 0
+            while index < len(words):
+                descriptor = words[index] if words[index].isdigit() else ""
+                pos = index + bool(descriptor)
+                if pos < len(words) and words[pos] in {">", ">>", ">&", "<"}:
+                    operator = words[pos]
+                    if operator == ">&" and pos + 1 < len(words) and words[pos + 1].isdigit():
+                        merged.append(descriptor + operator + words[pos + 1])
+                        index = pos + 2
+                    else:
+                        merged.append(descriptor + operator)
+                        index = pos + 1
+                else:
+                    merged.append(words[index])
+                    index += 1
+            # Preserve quoting while omitting the body. Re-quoting literal tokens
+            # also prevents a quoted semicolon becoming executable syntax.
+            lines.append(merged)
+        if pending:
+            return []
+    except ValueError:
+        return []
+    commands = []
+    for words in lines:
+        current = []
+        for word in words:
+            if word in {";", "&&", "||", "|", "&"}:
+                if current:
+                    commands.append(current)
+                current = []
+            else:
+                current.append(restore(word))
+        if current:
+            commands.append(current)
+    return commands
+
+
 LOOKING = {"status", "diff", "log", "show", "ls-files"}
 
 
@@ -235,17 +338,7 @@ REDIRECT = re.compile(r"^\d*(?:>>?|<)(?:&\d+)?$|^&>$|^\d*>&\d+$")
 
 def test_command(command):
     """Just the test run inside a longer shell command: no pipes, redirects or scripts."""
-    if not isinstance(command, str) or redact(command) != command:
-        return None
-    try:
-        words = shlex.split(command)
-    except ValueError:
-        return None
-    if len(words) >= 3 and posixpath.basename(words[0]) in {"sh", "bash", "zsh"}:
-        if words[-2] in {"-c", "-lc"}:
-            command = words[-1]
-    for piece in reversed(re.split(r"&&|\|\||;|\||\n", command)):
-        words = command_parts(piece)
+    for words in reversed(shell_commands(command)):
         if not test_run(words):
             continue
         kept, skip = [], False
@@ -391,7 +484,7 @@ def normalized_command(command):
 
 def operation_categories(arguments, capability=""):
     """Allowlisted semantics, excluding identifiers, paths, values and hashes."""
-    words = command_parts(arguments.get("command"))
+    words = [part for command in shell_commands(arguments.get("command")) for part in command[:1]]
     operations = set()
     for word in words:
         name = posixpath.basename(word)
@@ -427,33 +520,41 @@ def targets(arguments, effect, capability=""):
         for name in re.findall(r"^\*\*\* (?:Update|Add|Delete) File: (.+)$", patch, re.M):
             if path := normalized_path(name):
                 writes.add(path)
-    words = command_parts(arguments.get("command"))
-    reader = any(posixpath.basename(word) in READERS for word in words)
-    verifier = "verify" in operation_categories(arguments, capability)
-    starts, listing = True, False
-    for index, word in enumerate(words):
-        if word in {"&&", "||", "|", ";"}:
-            starts = True
+    for words in shell_commands(arguments.get("command")):
+        words = runner_words(words)
+        if not words:
             continue
-        if starts and not re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", word):
-            # The program a command runs (.venv/bin/python) is not a file it reads,
-            # and ls and find name folders to look through, not files.
-            starts, listing = False, posixpath.basename(word) in {"ls", "find"}
-            continue
-        if word.endswith(";"):
-            starts, word = True, word[:-1]
-        # Shell redirects provide explicit producers. Do not infer output from
-        # arbitrary script bodies or unknown tools classified as destructive.
-        if index and words[index - 1] in {">", ">>", "1>", "2>"}:
-            if path := normalized_path(word):
-                writes.add(path)
-        elif (
-            not listing
-            and (reader or verifier)
-            and not word.startswith("-")
-            and re.search(r"(?:/|\.[a-zA-Z0-9]{1,8}$)", word)
-        ):
-            if path := normalized_path(word):
+        program = posixpath.basename(words[0])
+        reader = program in (READERS - {"ls", "find"}) | {"ruff", "mypy", "tsc", "eslint"}
+        verifier = test_run(words)
+        skip_pattern = program in {"rg", "grep", "sed"}
+        skip_value = False
+        for index, word in enumerate(words[1:], 1):
+            if words[index - 1] in {">", ">>", "1>", "2>"}:
+                if path := normalized_path(word):
+                    writes.add(path)
+                continue
+            if skip_value:
+                skip_value = False
+                continue
+            if word in {"-e", "--regexp", "-f", "--file", "-g", "--glob", "--type"}:
+                skip_value = True
+                if word in {"-e", "--regexp"}:
+                    skip_pattern = False
+                continue
+            if word.startswith("-"):
+                continue
+            if skip_pattern:
+                skip_pattern = False
+                continue
+            # Program strings, patterns, selectors and prose are not filenames.
+            literal = word.split("::", 1)[0]
+            if (
+                (reader or verifier)
+                and not re.search(r"[\s:=()\[\]<>]", literal)
+                and re.search(r"(?:/|\.[a-zA-Z0-9]{1,8}$)", literal)
+                and (path := normalized_path(literal))
+            ):
                 reads.add(path)
     return sorted(reads)[:64], sorted(writes)[:64]
 
@@ -485,7 +586,7 @@ def extract_experience(steps):
         "verification_commands": verifiers[-3:],
         "actions": actions[:128],
         "inputs": sorted(inputs)[:128],
-        "edits": edits[:16],
+        "edits": compose_edits(edits)[:16],
     }
 
 
@@ -529,7 +630,44 @@ def edit_item(path, before, after):
             bounded.append(line)
         if bounded:
             item[name] = "\n".join(bounded)
+        if bounded != lines:
+            item["truncated"] = True
     return item if len(item) > 1 else None
+
+
+def compose_edits(edits):
+    """Collapse exact, unambiguous literal replacement chains before rendering.
+
+    Truncated hunks cannot establish identity and are deliberately left separate.
+    This derives a summary; original captured steps remain immutable evidence.
+    """
+    result = []
+    for edit in edits:
+        before = edit.get("before", "")
+        matches = [
+            i
+            for i, prior in enumerate(result)
+            if before
+            and prior["file"] == edit["file"]
+            and prior.get("after") == before
+            and not prior.get("truncated")
+            and not edit.get("truncated")
+        ]
+        if len(matches) == 1:
+            index = matches[0]
+            prior = result[index]
+            combined = {"file": edit["file"]}
+            if "before" in prior:
+                combined["before"] = prior["before"]
+            if "after" in edit:
+                combined["after"] = edit["after"]
+            if combined.get("before", "") == combined.get("after", ""):
+                result.pop(index)
+            else:
+                result[index] = combined
+        elif edit not in result:
+            result.append(dict(edit))
+    return result
 
 
 def patch_edits(arguments, capability):
@@ -728,6 +866,7 @@ def search_document(definition):
         [
             definition["intent_signature"],
             definition["title"],
+            *learning_text(definition),
             *experience["reads"],
             *experience["writes"],
             *experience["verification_commands"],
@@ -738,7 +877,21 @@ def search_document(definition):
 
 def semantic_document(definition):
     """Embed the task meaning separately from the exact artifact/command index."""
-    return "\n".join(dict.fromkeys([definition["intent_signature"], definition["title"]]))[:8000]
+    return "\n".join(
+        dict.fromkeys(
+            [
+                definition["intent_signature"],
+                definition["title"],
+                *learning_text(definition),
+            ]
+        )
+    )[:8000]
+
+
+def learning_text(definition):
+    proposal = definition.get("provenance", {}).get("learning", {}).get("proposal", {})
+    claims = [proposal.get("trigger"), proposal.get("principle"), *proposal.get("steps", [])]
+    return [claim["text"] for claim in claims if claim]
 
 
 def query_keys(query):

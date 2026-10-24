@@ -37,6 +37,11 @@ class Settings:
     boundary_llm_url: str | None = None
     boundary_llm_key: str | None = None
     boundary_llm_model: str = "boundary-refinement"
+    learning_agent: str | None = None
+    learning_timeout: int = 120
+    learning_background: bool = True
+    # Workspaces share skills by default; repository isolation is an explicit policy.
+    learning_project_isolation: bool = False
     # Choices made on the dashboard's settings page; None turns them off (as in tests).
     preferences_path: str | None = None
     allowed_hosts: tuple[str, ...] = ("127.0.0.1:*", "localhost:*", "testserver")
@@ -71,6 +76,12 @@ class Settings:
             boundary_llm_url=os.getenv("MM_BOUNDARY_LLM_URL"),
             boundary_llm_key=os.getenv("MM_BOUNDARY_LLM_KEY"),
             boundary_llm_model=os.getenv("MM_BOUNDARY_LLM_MODEL", "boundary-refinement"),
+            learning_agent=os.getenv("MM_LEARNING_AGENT"),
+            learning_timeout=int(os.getenv("MM_LEARNING_TIMEOUT", "120")),
+            learning_background=os.getenv("MM_LEARNING_BACKGROUND", "true").lower()
+            in {"1", "true", "yes"},
+            learning_project_isolation=os.getenv("MM_LEARNING_PROJECT_ISOLATION", "false").lower()
+            in {"1", "true", "yes"},
             preferences_path=str(home() / "preferences.json"),
             allowed_hosts=tuple(
                 os.getenv("MM_ALLOWED_HOSTS", "127.0.0.1:*,localhost:*,testserver").split(",")
@@ -81,6 +92,12 @@ class Settings:
         )
 
     def __post_init__(self):
+        if self.learning_agent not in {None, "codex", "claude"}:
+            raise ValueError("learning agent must be codex or claude")
+        if not 10 <= self.learning_timeout <= 600:
+            raise ValueError("learning timeout must be between 10 and 600 seconds")
+        if self.learning_agent and self.deployment_mode != "local":
+            raise ValueError("CLI skill distillation is available only in local mode")
         if self.deployment_mode not in {"local", "hosted"}:
             raise ValueError("deployment mode must be local or hosted")
         if self.deployment_mode == "hosted":

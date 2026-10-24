@@ -143,6 +143,7 @@ class InspectInput(Contract):
 class PreferencesInput(Contract):
     # Which agent names new skills for the dashboard: "off", "claude" or "codex".
     skill_titles: Literal["off", "claude", "codex"]
+    skill_learning: Literal["off", "claude", "codex"] | None = None
 
 
 class SessionUsageInput(Contract):
