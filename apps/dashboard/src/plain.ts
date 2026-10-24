@@ -3,16 +3,20 @@
 export type Tone = 'good' | 'warn' | 'bad' | 'info' | 'neutral';
 
 export function skillStatus(status: string, successes = 0, needsReview = false): {label: string; tone: Tone; explain: string} {
-  if (needsReview && status !== 'retired') return {label: 'Needs your OK', tone: 'info', explain: 'Learned automatically from a session whose tests passed. Agents won’t get it until you keep it.'};
-  if (status === 'active') return {label: 'Ready', tone: 'good', explain: 'Verified. Your agents get it when a task matches.'};
-  if (status === 'flagged') return {label: 'Paused', tone: 'bad', explain: 'A later run failed, so it is paused until it is relearned.'};
+  if (status === 'flagged') return {label: 'Paused', tone: 'bad', explain: 'Paused for evidence or quality review. Agents will not receive it.'};
   if (status === 'retired') return {label: 'Turned off', tone: 'neutral', explain: 'Turned off. Your agents will not get it.'};
+  if (needsReview) return {label: 'Needs your OK', tone: 'info', explain: 'Review this candidate. Agents receive it only after you keep it and it passes two independent checks.'};
+  if (status === 'active') return {label: 'Ready', tone: 'good', explain: 'Verified. Your agents get it when a task matches.'};
   const needed = Math.max(0, 2 - successes);
   return {
     label: 'Learning',
     tone: 'warn',
     explain: needed ? `Needs ${needed} more successful ${needed === 1 ? 'run' : 'runs'} before agents get it.` : 'Checking its latest results.',
   };
+}
+
+export function needsSkillReview(p: {status: string; needs_review?: boolean}) {
+  return Boolean(p.needs_review) && p.status !== 'flagged' && p.status !== 'retired';
 }
 
 export function sessionStatus(status: string): {label: string; tone: Tone} {
@@ -117,7 +121,7 @@ export function skillName(p: {name?: string; learned_from?: string; title?: stri
 
 /** "Passed 2 of 2 checks", "Needs 1 more check": where a skill stands, in words. */
 export function checksLine(successes = 0, failures = 0, status = '') {
-  if (status === 'flagged') return `Failed ${failures} of ${successes + failures} checks`;
+  if (status === 'flagged') return failures ? `Failed ${failures} of ${successes + failures} checks` : 'Paused for evidence or quality review';
   if (status === 'active') return `Passed ${successes} of ${successes + failures} checks`;
   const needed = Math.max(0, 2 - successes);
   return needed ? `Needs ${needed} more passing ${needed === 1 ? 'check' : 'checks'}` : `Passed ${successes} checks`;

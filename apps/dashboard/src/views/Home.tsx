@@ -1,18 +1,18 @@
 import {ProviderLogo, providerOf} from '../logos';
-import {agentName} from '../plain';
+import {agentName, needsSkillReview} from '../plain';
 import {CountUp, Empty, formatDuration, formatNumber, Icon, relativeTime, Shimmer, Skeleton} from '../ui';
 import {useWorkspace} from '../workspace';
 import {SessionRow} from './Activity';
 import {SkillRow} from './Skills';
 
 export function Home() {
-  const {procedures, runs, usage, loading, navigate} = useWorkspace();
+  const {procedures, runs, runTotal, usage, loading, navigate} = useWorkspace();
   if (!procedures || !runs || !usage) return loading ? <HomeSkeleton/> : null;
 
-  const ready = procedures.filter(p => p.status === 'active');
+  const ready = procedures.filter(p => p.status === 'active' && !p.needs_review);
   const learning = procedures.filter(p => p.status === 'provisional');
   const paused = procedures.filter(p => p.status === 'flagged');
-  const review = procedures.filter(p => p.needs_review && p.status !== 'retired');
+  const review = procedures.filter(needsSkillReview);
   const agents = [...new Map(runs.map(r => [agentName(r.agent_name), providerOf(r.agent_name)])).entries()];
   const used = usage.operations.find(o => o.operation === 'recall')?.requests ?? 0;
   const latest = runs[0]?.created_at;
@@ -41,7 +41,7 @@ export function Home() {
       <Tile label="Ready to use" value={ready.length} note="verified skills" tone="good" onClick={() => navigate({view: 'skills'})}/>
       <Tile label="Learning" value={learning.length} note="need more successful runs" onClick={() => navigate({view: 'skills'})}/>
       <Tile label="Handed to agents" value={used} note="times a skill was looked up" onClick={() => navigate({view: 'skills'})}/>
-      <Tile label="Sessions" value={runs.length} note="recorded agent sessions" onClick={() => navigate({view: 'activity'})}/>
+      <Tile label="Sessions" value={runTotal ?? runs.length} note="recorded agent sessions" onClick={() => navigate({view: 'activity'})}/>
     </section>
 
     {review.length > 0 && <div className="banner tone-info"><Icon name="bolt"/>
@@ -50,7 +50,7 @@ export function Home() {
     </div>}
 
     {paused.length > 0 && <div className="banner tone-bad"><Icon name="flag"/>
-      <span><strong>{paused.length} {paused.length === 1 ? 'skill is' : 'skills are'} paused</strong> because a later run failed. Agents won’t get {paused.length === 1 ? 'it' : 'them'}.</span>
+      <span><strong>{paused.length} {paused.length === 1 ? 'skill is' : 'skills are'} paused</strong> while evidence or quality concerns are reviewed. Agents won’t get {paused.length === 1 ? 'it' : 'them'}.</span>
       <button type="button" className="ghost-button small" onClick={() => navigate({view: 'skills', id: paused[0].procedure_token})}>Review</button>
     </div>}
 

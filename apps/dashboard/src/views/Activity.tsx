@@ -1,5 +1,5 @@
-import {useEffect, useMemo, useState} from 'react';
-import type {RunDetail, RunEvent, RunSummary} from '../api';
+import {useEffect, useState} from 'react';
+import type {RunDetail, RunEvent, RunSummary, RunPage} from '../api';
 import {ProviderLogo, providerOf} from '../logos';
 import {agentName, describeStep, sessionIssues, sessionStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
@@ -9,25 +9,38 @@ type Filter = 'all' | 'success' | 'failure' | 'recording' | 'unverified' | 'inco
 const filterLabels: Record<Filter, string> = {all: 'All', success: 'Succeeded', failure: 'Failed', recording: 'In progress', unverified: 'Not verified', incomplete: 'Capture incomplete'};
 
 export function Activity({selected}: {selected?: string}) {
-  const {runs, loading, navigate} = useWorkspace();
+  const {runs, client, scope, navigate} = useWorkspace();
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
-  const list = runs ?? [];
-  const count = (f: Filter) => f === 'all' ? list.length : list.filter(r => r.status === f).length;
-  const shown = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return list.filter(r => (filter === 'all' || r.status === filter) && (!q || r.intent_text.toLowerCase().includes(q)));
-  }, [list, filter, query]);
+  const [page, setPage] = useState(0);
+  const [result, setResult] = useState<RunPage>();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  useEffect(() => {setPage(0);}, [scope]);
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true); setError('');
+    const timer = setTimeout(() => {
+      client.runPage(scope, page * 100, filter, query, controller.signal).then(setResult)
+        .catch(e => {if (!controller.signal.aborted) setError((e as Error).message);})
+        .finally(() => {if (!controller.signal.aborted) setLoading(false);});
+    }, 150);
+    return () => {clearTimeout(timer); controller.abort();};
+  }, [client, scope, page, filter, query, runs]);
+  const list = result?.items ?? [];
+  const count = (f: Filter) => f === 'all' ? Object.values(result?.status_counts ?? {}).reduce((a, b) => a + b, 0) : result?.status_counts[f] ?? 0;
+  const shown = list;
   const filters = (Object.keys(filterLabels) as Filter[]).filter(f => f === 'all' || count(f) > 0);
 
   return <div className="stack">
-    {list.length > 0 && <div className="toolbar">
-      <Segmented label="Show" value={filter} onChange={setFilter} options={filters.map(f => ({value: f, label: filterLabels[f], count: count(f)}))}/>
-      <SearchField value={query} onChange={setQuery} placeholder="Search tasks"/>
+    {(result && count('all') > 0) && <div className="toolbar">
+      <Segmented label="Show" value={filter} onChange={next => {setFilter(next); setPage(0);}} options={filters.map(f => ({value: f, label: filterLabels[f], count: count(f)}))}/>
+      <SearchField value={query} onChange={next => {setQuery(next); setPage(0);}} placeholder="Search all tasks"/>
     </div>}
-    {list.length > 0 && <p className="muted">{list.length === 100 ? 'Showing the latest 100 sessions. ' : ''}Capture incomplete means actions could not be recorded reliably. It does not establish whether the task succeeded or failed.</p>}
-    {!runs ? (loading ? <Skeleton/> : null)
-      : !list.length ? <div className="card"><Empty icon="runs" title="No sessions yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>Sessions show up here once an agent is connected and starts working.</Empty></div>
+    {result && <div className="toolbar"><span className="muted">{result.total ? `${page * 100 + 1}–${page * 100 + list.length} of ${result.total.toLocaleString()} sessions` : 'No matching sessions'}</span><div><button type="button" className="ghost-button" disabled={loading || page === 0} onClick={() => setPage(p => p - 1)}>Previous</button><button type="button" className="ghost-button" disabled={loading || !result.has_more} onClick={() => setPage(p => p + 1)}>Next</button></div></div>}
+    {error && <div role="alert" className="banner tone-bad">{error}</div>}
+    {loading ? <Skeleton/>
+      : !result || count('all') === 0 ? <div className="card"><Empty icon="runs" title="No sessions yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>Sessions show up here once an agent is connected and starts working.</Empty></div>
       : !shown.length ? <div className="card"><Empty compact icon="search" title="No matches">Nothing matches{query && <> “{query}”</>}.</Empty></div>
       : <div className="card"><div className="rows">{shown.map(r => <SessionRow key={r.run_token} r={r}/>)}</div></div>}
     <SessionSheet token={selected} onClose={() => navigate({view: 'activity'})}/>

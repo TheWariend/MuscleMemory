@@ -4,6 +4,7 @@ import {ErrorBoundary, FeedbackProvider, Icon, Logo} from './ui';
 import {parseRoute, routeHref, views, WorkspaceContext, type Route, type View, type WorkspaceState} from './workspace';
 import {Activity} from './views/Activity';
 import {Home} from './views/Home';
+import {MemoryGraphView} from './views/MemoryGraph';
 import {Login} from './views/Login';
 import {Playground} from './views/Playground';
 import {Api, Settings} from './views/Settings';
@@ -55,7 +56,7 @@ function Shell({client, session, onSignOut}: {client: Client; session: Session; 
   const namespaces = useMemo(() => Object.keys(session.grants).filter(n => session.grants[n].includes('read')), [session]);
   const [scope, setScope] = useState(namespaces[0]);
   const [route, setRoute] = useState<Route>(() => parseRoute(location.hash));
-  const [data, setData] = useState<{procedures?: ProcedureSummary[]; runs?: RunSummary[]; usage?: Usage}>({});
+  const [data, setData] = useState<{procedures?: ProcedureSummary[]; runs?: RunSummary[]; runTotal?: number; usage?: Usage}>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [nonce, setNonce] = useState(0);
@@ -78,8 +79,8 @@ function Shell({client, session, onSignOut}: {client: Client; session: Session; 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError('');
-    Promise.all([client.procedures(scope, controller.signal), client.runs(scope, controller.signal), client.usage(scope, controller.signal)])
-      .then(([procedures, runs, usage]) => setData({procedures, runs, usage}))
+    Promise.all([client.procedures(scope, controller.signal), client.runPage(scope, 0, 'all', '', controller.signal), client.usage(scope, controller.signal)])
+      .then(([procedures, page, usage]) => setData({procedures, runs: page.items, runTotal: page.total, usage}))
       .catch(e => {if (!controller.signal.aborted) setError((e as Error).message);})
       .finally(() => {if (!controller.signal.aborted) setLoading(false);});
     return () => controller.abort();
@@ -140,6 +141,7 @@ function Shell({client, session, onSignOut}: {client: Client; session: Session; 
           {error && <div role="alert" className="banner tone-bad"><Icon name="alert"/><span>{error}</span><button type="button" className="ghost-button small" onClick={reload}>Try again</button></div>}
           {route.view === 'home' && <Home/>}
           {route.view === 'skills' && <Skills selected={route.id}/>}
+          {route.view === 'graph' && <MemoryGraphView root={route.id}/>}
           {route.view === 'playground' && <Playground/>}
           {route.view === 'activity' && <Activity selected={route.id}/>}
           {route.view === 'api' && <Api/>}

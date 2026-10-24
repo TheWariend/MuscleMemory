@@ -20,16 +20,18 @@ const agents: Array<{id: Agent; label: string; logo: Provider}> = [
 export function Settings() {
   return <div className="stack">
     <Connect/>
+    <SkillLearning/>
     <SkillNames/>
     <About/>
   </div>;
 }
 
 function Connect() {
-  const {scope, session, runs, error, reload} = useWorkspace();
+  const {scope, session, runs, runTotal, error, reload} = useWorkspace();
   const [agent, setAgent] = useState<Agent>('codex');
   const origin = window.location.origin;
   const connected = (runs?.length ?? 0) > 0;
+  const sessionCount = runTotal ?? runs?.length ?? 0;
   const waiting = runs !== undefined && !connected && !error;
   const name = agents.find(a => a.id === agent)!.label;
 
@@ -68,7 +70,7 @@ function Connect() {
         <li><span className={`guide-num ${connected ? 'done' : ''}`}>{connected ? <Icon name="check" size={13}/> : steps.length + 1}</span><div><h3>Give it a task</h3>
           {connected ? <div className="connected-line">
             <Badge label="Connected" tone="good"/>
-            <span className="muted">{runs!.length.toLocaleString()} {runs!.length === 1 ? 'session' : 'sessions'} received</span>
+            <span className="muted">{sessionCount.toLocaleString()} {sessionCount === 1 ? 'session' : 'sessions'} received</span>
             <a className="ghost-button small" href="#/activity">See activity<Icon name="arrow" size={13}/></a>
           </div>
             : <p className="live"><span className="status-dot pulse"/>Waiting for the first session… this page checks by itself.</p>}
@@ -79,10 +81,39 @@ function Connect() {
 }
 
 const namers: Array<{id: Preferences['skill_titles']; label: string; logo?: Provider}> = [
-  {id: 'off', label: 'Off'},
+  {id: 'off', label: 'Manual only'},
   {id: 'claude', label: 'Claude Code', logo: 'claude'},
   {id: 'codex', label: 'Codex', logo: 'codex'},
 ];
+
+function SkillLearning() {
+  const {client, can} = useWorkspace();
+  const {toast} = useFeedback();
+  const [preferences, setPreferences] = useState<Preferences>();
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    client.preferences(controller.signal).then(setPreferences).catch(e => {if (!controller.signal.aborted) setError((e as Error).message);});
+    return () => controller.abort();
+  }, [client]);
+  async function choose(next: Preferences['skill_learning']) {
+    if (!preferences) return;
+    setBusy(true);
+    try {setPreferences(await client.setPreferences(preferences.skill_titles, next)); toast(next === 'off' ? 'Local learning selected. No model curation calls.' : 'Learning agent selected. New procedures still need independent checks.');}
+    catch (e) {toast((e as Error).message, 'bad');}
+    finally {setBusy(false);}
+  }
+  return <section className="card">
+    <div className="card-head"><div><h2>Learn reusable procedures</h2><p>Verified sessions learn locally without an LLM account. Optionally use your signed-in agent to curate captured requests, code changes, and test commands. Both paths require independent checks and your review.</p></div></div>
+    <div className="pad stack-sm">
+      {error ? <p role="alert">{error}</p> : !preferences ? <Skeleton rows={1}/> : <div className="client-grid" role="radiogroup" aria-label="Learn procedures with">{namers.map(n => <button type="button" role="radio" aria-checked={preferences.skill_learning === n.id} key={n.id} className="client" disabled={busy || !can('admin') || preferences.learning_locked} onClick={() => void choose(n.id)}>
+        {n.logo ? <ProviderLogo provider={n.logo} size={20}/> : <Icon name="close" size={16}/>}<span><strong>{n.id === 'off' ? 'Local only' : n.label}</strong></span>{preferences.skill_learning === n.id && <span className="client-check"><Icon name="check" size={12}/></span>}
+      </button>)}</div>}
+      <p className="field-note">{preferences?.learning_locked ? 'The learning agent is set by the server environment.' : 'Codex or Claude Code uses your subscription or API billing. Local only makes no curation calls. Failed attempts remain available to retry.'} <a href="#/graph">See learning decisions and evidence</a>.</p>
+    </div>
+  </section>;
+}
 
 /** Which of your own agents gives new skills a readable title. */
 function SkillNames() {
@@ -105,7 +136,7 @@ function SkillNames() {
   }
 
   return <section className="card">
-    <div className="card-head"><div><h2>Skill names</h2><p>Let the agent you already use give each new skill a short, readable title. It gets the request, the files changed and the test command, never file contents, and runs once without changing anything. Search and your agents still use the original request.</p></div></div>
+    <div className="card-head"><div><h2>Skill names</h2><p>Choose Manual only to name a skill when you click its name button. Selecting Codex or Claude Code names new skills automatically. Naming gets the request, the files changed and the test command, never file contents. Search and your agents still use the original request.</p></div></div>
     <div className="pad stack-sm">
       {error ? <div role="alert" className="banner tone-bad"><Icon name="alert"/><span>{error}</span></div>
         : !choice ? <Skeleton rows={1}/>

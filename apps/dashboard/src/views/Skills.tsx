@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import type {ProcedureDetail, ProcedureSummary, SkillAgent, SkillSummary} from '../api';
-import {agentName, checksLine, describeStep, requestDetails, shortCommand, shortTitle, skillName, skillStatus} from '../plain';
+import {agentName, checksLine, describeStep, needsSkillReview, requestDetails, shortCommand, shortTitle, skillName, skillStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, NoteText, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {ProviderLogo} from '../logos';
 import {useWorkspace} from '../workspace';
@@ -13,25 +13,25 @@ export function Skills({selected}: {selected?: string}) {
   const [filter, setFilter] = useState<Filter>('all');
   const [query, setQuery] = useState('');
   const list = procedures ?? [];
-  const matches = (p: ProcedureSummary, f: Filter) => f === 'all' || (f === 'review' ? Boolean(p.needs_review) : p.status === f);
+  const matches = (p: ProcedureSummary, f: Filter) => f === 'all' || (f === 'review' ? needsSkillReview(p) : f === 'active' ? p.status === 'active' && !p.needs_review : p.status === f);
   const count = (f: Filter) => list.filter(p => matches(p, f)).length;
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return list.filter(p => matches(p, filter) && (!q || [p.name, p.learned_from, p.title].some(t => t?.toLowerCase().includes(q))));
+    return list.filter(p => matches(p, filter) && (!q || [p.name, p.learned_from, p.title, p.learned_method?.trigger, p.learned_method?.principle].some(t => t?.toLowerCase().includes(q))));
   }, [list, filter, query]);
   const filters = (Object.keys(filterLabels) as Filter[]).filter(f => f === 'all' || count(f) > 0);
 
   return <div className="stack">
     {list.length > 0 && <p className="skills-explain">
-      A skill is how your agent solved a task before: the files it changed and the test that proved it worked.
-      It’s <strong>Ready</strong> after passing two separate checks, and only then handed to your agent when a similar task comes up.
+      A learned skill explains when to act, the reusable rule, and how to adapt it to another task.
+      It’s <strong>Ready</strong> after your review and two independent passing checks. Paused recordings remain available as evidence.
     </p>}
     {list.length > 0 && <div className="toolbar">
       <Segmented label="Show" value={filter} onChange={setFilter} options={filters.map(f => ({value: f, label: filterLabels[f], count: count(f)}))}/>
       <SearchField value={query} onChange={setQuery} placeholder="Search skills"/>
     </div>}
     {!procedures ? (loading ? <Skeleton/> : null)
-      : !list.length ? <div className="card"><Empty icon="procedures" title="No skills yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>When an agent finishes a task and its tests pass, MuscleMemory learns how it did it. After two more successful runs, the skill is ready for your agents to reuse.</Empty></div>
+      : !list.length ? <div className="card"><Empty icon="procedures" title="No skills yet" action={<button type="button" className="secondary-button" onClick={() => navigate({view: 'settings'})}>Connect an agent</button>}>Verified recordings teach provisional skills locally, with optional model curation. Candidates need your review and two independent passing checks before reuse.</Empty></div>
       : !shown.length ? <div className="card"><Empty compact icon="search" title="No matches">Nothing matches{query && <> “{query}”</>}.</Empty></div>
       : <div className="card"><div className="rows">{shown.map(p => <SkillRow key={p.procedure_token} p={p}/>)}</div></div>}
     <SkillSheet token={selected} onClose={() => navigate({view: 'skills'})}/>
@@ -43,18 +43,21 @@ export function SkillRow({p, compact}: {p: ProcedureSummary; compact?: boolean})
   const status = skillStatus(p.status, p.successes, p.needs_review);
   const files = (p.changes ?? []).map(f => f.split('/').slice(-2).join('/'));
   const task = p.learned_from?.trim();
-  // Under the built name, the request it came from is the description.
-  const desc = p.name ? clip(task || p.title || '') : requestDetails(task);
+  const method = p.learned_method;
+  const legacy = p.admission === 'legacy_pending_curation' && !method;
+  const desc = method ? clip(method.principle) : legacy ? 'No curated method. Original evidence is retained; agents cannot use this record.' : p.name ? clip(task || p.title || '') : requestDetails(task);
   return <button type="button" className="row skill-row" onClick={() => navigate({view: 'skills', id: p.procedure_token})}>
     <span className="row-icon"><Icon name="procedures" size={15}/></span>
     <span className="row-main">
       <span className="row-title" title={task || p.title}>{skillName(p)}</span>
-      {!compact && desc && <span className="skill-desc">{desc}</span>}
-      {!compact && <span className="skill-does">
+      {!compact && desc && <span className="skill-desc" title={method?.principle}>{desc}</span>}
+      {!compact && method && <span className="skill-does"><span title={method.trigger}><span className="skill-label">Applies</span>{clip(method.trigger)}</span></span>}
+      {!compact && !method && !legacy && <span className="skill-does">
         {files.length > 0 && <span><span className="skill-label">Changes</span>{files.join(', ')}</span>}
         {p.check?.[0] && <span><span className="skill-label">Checks with</span><code>{shortCommand(p.check[0])}</code></span>}
       </span>}
       <span className="row-meta">
+        {(method || legacy) && <span>{method ? 'Curated method' : 'Legacy record'} · v{p.version}</span>}
         <span>{checksLine(p.successes, p.failures, p.status)}</span>
         {p.updated_at && <span>{relativeTime(p.updated_at)}</span>}
       </span>
@@ -103,7 +106,7 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     setNaming(true);
     try {
       const {name} = await client.nameSkill(detail.procedure_token, agent);
-      setDetail({...detail, name}); toast(`Named by ${agentName(agent)}.`); reload();
+      setDetail({...detail, name, has_custom_name: true}); toast(`Named by ${agentName(agent)}.`); reload();
     }
     catch (e) {toast((e as Error).message, 'bad');}
     finally {setNaming(false);}
@@ -129,10 +132,13 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
     if (!detail || !await confirm({title: 'Delete this skill?', confirm: 'Delete', danger: true, body: <p>“{title}” and its history will be removed. This can’t be undone.</p>})) return;
     setBusy(true);
     try {await client.deleteProcedure(detail.procedure_token); toast('Skill deleted'); reload(); onClose();}
-    catch (e) {toast((e as Error).message, 'bad'); setBusy(false);}
+    catch (e) {toast((e as Error).message, 'bad');}
+    finally {setBusy(false);}
   }
 
   const d = detail?.definition;
+  const method = d?.provenance.learning?.proposal;
+  const legacy = d?.provenance.admission === 'legacy_pending_curation' && !method;
   const request = asked || d?.title || '';
   const title = detail?.name || shortTitle(request);
   // The agent chosen in settings, else the one that learned this skill.
@@ -155,10 +161,23 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
         {value: 'steps', label: 'What it does'}, {value: 'proof', label: 'Proof'}, {value: 'details', label: 'Details'}]}/></div>
       <div className="sheet-body" key={tab}>
         {tab === 'steps' && <div className="stack-sm">
-          {request !== title && <p className="intent-line">Learned from your request: “{request}”</p>}
-          {detail.summary && <Summary summary={detail.summary} successes={detail.successes}/>}
-          {(d.avoidance_rules?.length ?? 0) > 0 && <Notes title="Watch out" icon="alert" items={d.avoidance_rules!}/>}
-          {(d.recovery_notes?.length ?? 0) > 0 && <Notes title="If it goes wrong" icon="refresh" items={d.recovery_notes!}/>}
+          {legacy && <p className="notice">This legacy record has no curated method and remains paused. Its original evidence is retained below. It needs successful curation before review or validation.</p>}
+          {!method && !legacy && request !== title && <p className="intent-line">Learned from your request: “{request}”</p>}
+          {method && <section className="sub stack-sm">
+            <p className="muted">Curated method · version {detail.procedure_version} · {detail.successes ? `${detail.successes} independent passing checks` : 'Not independently validated yet'}</p>
+            <h3>When to use</h3><p>{method.trigger.text}</p>
+            <h3>Reusable rule</h3><p>{method.principle.text}</p>
+            {method.preconditions.length > 0 && <><h3>Preconditions</h3><ul className="bullets">{method.preconditions.map((condition, i) => <li key={i}>{condition.text}</li>)}</ul></>}
+            <h3>Method</h3><ol className="bullets">{method.steps.map((step, i) => <li key={i}>{step.text}</li>)}</ol>
+            <h3>Adapt to the next task</h3><p>{method.adaptation.text}</p>
+            <a href={`#/graph/${encodeURIComponent(detail.procedure_token)}`}>Follow its evidence and earlier versions</a>
+          </section>}
+          {detail.summary && (method || legacy ? <details className="all-steps"><summary>Original session evidence</summary>
+            {request && <p className="intent-line">Original request: “{request}”</p>}
+            <Summary summary={detail.summary} successes={detail.successes}/>
+          </details> : <Summary summary={detail.summary} successes={detail.successes}/>)}
+          {!legacy && (d.avoidance_rules?.length ?? 0) > 0 && <Notes title="Watch out" icon="alert" items={d.avoidance_rules!}/>}
+          {!legacy && (d.recovery_notes?.length ?? 0) > 0 && <Notes title="If it goes wrong" icon="refresh" items={d.recovery_notes!}/>}
           <details className="all-steps" open={!detail.summary}>
             <summary>All {d.steps.length} recorded steps</summary>
             <ol className="timeline">{d.steps.map((s, i) => <li className="timeline-item" key={s.step_token}>
@@ -166,17 +185,17 @@ function SkillSheet({token, onClose}: {token?: string; onClose: () => void}) {
               <div className="timeline-body"><p className="event-text">{describeStep(s.capability, s.arguments, s.effect, s.source_tool)}</p></div>
             </li>)}</ol>
           </details>
-          <p className="notice"><Icon name="shield" size={14}/>Agents get this as a suggestion. They still check the current files and follow your normal approvals.</p>
+          <p className="notice"><Icon name="shield" size={14}/>{detail.lifecycle_status === 'flagged' || detail.lifecycle_status === 'retired' ? 'This record is not handed to agents. Its evidence and history remain available.' : 'After review and independent validation, agents receive this as guidance. They still check the current files and follow your normal approvals.'}</p>
         </div>}
         {tab === 'proof' && <Proof detail={detail}/>}
         {tab === 'details' && <CodeBlock label="Full skill (JSON)">{JSON.stringify(d, null, 2)}</CodeBlock>}
       </div>
       {(can('write') || can('delete')) && <div className="sheet-foot">
-        {can('admin') && !detail.name && <button type="button" className="secondary-button" disabled={busy || naming} onClick={() => void nameIt(nameWith)}
+        {can('admin') && !detail.has_custom_name && <button type="button" className="secondary-button" disabled={busy || naming} onClick={() => void nameIt(nameWith)}
           title={`Ask ${agentName(nameWith)} for a short title. It gets the request, the files changed and the test command.`}>
           <ProviderLogo provider={nameWith} size={13}/>{naming ? 'Naming…' : `Name with ${agentName(nameWith)}`}
         </button>}
-        {can('write') && detail.needs_review && <button type="button" className="primary-button" disabled={busy} onClick={() => void keep()}><Icon name="check" size={14}/>Keep</button>}
+        {can('admin') && detail.needs_review && detail.lifecycle_status !== 'flagged' && detail.lifecycle_status !== 'retired' && <button type="button" className="primary-button" disabled={busy} onClick={() => void keep()}><Icon name="check" size={14}/>Keep</button>}
         {can('admin') && detail.lifecycle_status === 'active' && !detail.needs_review && (['codex', 'claude'] as const).map(agent =>
           <button key={agent} type="button" className="secondary-button" disabled={busy} onClick={() => void exportTo(agent)}
             title={`Write this proven skill into ${agentName(agent)}’s skills folder as SKILL.md`}>
@@ -204,11 +223,11 @@ function Proof({detail}: {detail: ProcedureDetail}) {
     </button>}
     {detail.validation_history.length > 0 && <div className="rows bordered">{detail.validation_history.map(e => {
       const o = e.metrics.observed;
-      const worked = e.outcome?.succeeded === true;
+      const worked = e.outcome?.succeeded === true && !e.outcome.invalidated;
       return <button type="button" className="row" key={e.run_token} onClick={() => navigate({view: 'activity', id: e.run_token})}>
-        <span className="row-main"><span className="row-title">{worked ? 'Worked' : 'Failed'}</span>
+        <span className="row-main"><span className="row-title">{e.outcome.invalidated ? 'Evidence invalidated' : worked ? 'Worked' : 'Failed'}</span>
           <span className="row-meta">{o ? <><span>{o.tool_calls} tool calls</span><span>{formatDuration(o.duration_ms)}</span></> : <span>No measurements</span>}</span></span>
-        <Badge label={worked ? 'Worked' : 'Failed'} tone={worked ? 'good' : 'bad'}/>
+        <Badge label={e.outcome.invalidated ? 'Invalidated' : worked ? 'Worked' : 'Failed'} tone={worked ? 'good' : 'bad'}/>
       </button>;
     })}</div>}
     {detail.contrasts.length > 0 && <p className="muted">Learned from {detail.contrasts.length} failed {detail.contrasts.length === 1 ? 'attempt' : 'attempts'} too. See “Watch out” for what to avoid.</p>}

@@ -5,10 +5,12 @@ export type ProcedureSummary = {
   successes?: number; failures?: number; confidence?: number; updated_at?: string;
   needs_review?: boolean; auto_learned?: boolean;
   learned_from?: string; changes?: string[]; check?: string[];
+  admission?: string | null; learned_method?: {trigger: string; principle: string} | null;
   /** A title from Claude Code or Codex, else a name built from the files it changed and its test. */
   name?: string;
 };
 export type RunSummary = {run_token: string; intent_text: string; status: string; agent_name?: string | null; created_at?: string};
+export type RunPage = {items: RunSummary[]; total: number; has_more: boolean; status_counts: Record<string, number>};
 export type Usage = {
   operations: Array<{operation: string; requests: number; units: number}>;
   observed_savings: Record<string, number>; paired_measurements: Record<string, number>;
@@ -26,16 +28,16 @@ export type Definition = {
   parameters: Record<string, {kind: string; description: string}>;
   preconditions: string[]; expected_outcomes: string[]; required_capabilities: string[];
   required_permissions: string[]; environment_requirements: Record<string, string>; steps: Step[];
-  provenance: Record<string, unknown>; applicability_conditions?: string[]; risk_cues?: string[];
+  provenance: Record<string, unknown> & {learning?: {proposal: {trigger: {text: string}; principle: {text: string}; adaptation: {text: string}; steps: Array<{text: string}>; preconditions: Array<{text: string}>}}}; applicability_conditions?: string[]; risk_cues?: string[];
   avoidance_rules?: string[]; recovery_notes?: string[];
 };
 export type Measurements = {tool_calls: number; duration_ms: number; tokens?: number | null; cost_usd?: number | null};
 export type ProcedureDetail = {
   procedure_token: string; procedure_version: number; visibility_scope: string; lifecycle_status: string; needs_review?: boolean;
-  name?: string;
+  name?: string; has_custom_name: boolean;
   definition: Definition; created_at: string; updated_at: string;
   version_history: Array<{version: number; status: string; successes: number; failures: number}>;
-  validation_history: Array<{run_token: string; outcome: {succeeded?: boolean}; metrics: {observed?: Measurements; baseline?: Measurements | null}}>;
+  validation_history: Array<{run_token: string; outcome: {succeeded?: boolean; invalidated?: boolean}; metrics: {observed?: Measurements; baseline?: Measurements | null}}>;
   contrasts: Array<{contrast_id: string; failed_run_token: string; successful_run_token: string; capability_signature: string[]; step_diff: unknown}>;
   successes: number; failures: number; confidence: number; stale: boolean;
   summary?: SkillSummary;
@@ -45,7 +47,10 @@ export type SkillSummary = {
   test: string | null; look_around_steps: number; learned_by: string | null; checked_by: Record<string, number>;
 };
 export type SkillAgent = 'codex' | 'claude';
-export type Preferences = {skill_titles: 'off' | SkillAgent; agents: Record<SkillAgent, string>};
+export type Preferences = {skill_titles: 'off' | SkillAgent; skill_learning: 'off' | SkillAgent; learning_locked: boolean; agents: Record<SkillAgent, string>};
+export type MemoryNode = {id: string; kind: 'skill' | 'claim' | 'run' | 'event'; reference: string; version: number; event_id: string; title?: string; current?: boolean; status?: string};
+export type MemoryGraph = {nodes: MemoryNode[]; edges: Array<{id: string; source: string; target: string; relation: string; evidence: {text?: string; execution_verified?: boolean; reason?: string}}>; truncated: boolean};
+export type LearningDecision = {id: string; run_token: string; status: string; reason: string; attempts: number};
 export type ExportResult = {agent: SkillAgent; name: string; installed: boolean; unchanged: boolean};
 export type RunEvent = {
   event_id: string; sequence: number; kind: 'intent' | 'tool' | 'completion'; intent_text: string | null;
@@ -96,6 +101,9 @@ export function createClient(key: string) {
       call<{items: ProcedureSummary[]}>('GET', `/v1/procedures?${scoped(scope)}&limit=100`, undefined, signal).then(r => r.items),
     runs: (scope: string, signal?: AbortSignal) =>
       call<{items: RunSummary[]}>('GET', `/v1/runs?${scoped(scope)}&limit=100`, undefined, signal).then(r => r.items),
+    runPage: (scope: string, offset = 0, status = 'all', query = '', signal?: AbortSignal) => call<RunPage>('GET', `/v1/runs?${scoped(scope)}&limit=100&offset=${offset}${status === 'all' ? '' : `&status=${encodeURIComponent(status)}`}&query=${encodeURIComponent(query)}`, undefined, signal),
+    graph: (scope: string, root?: string, signal?: AbortSignal) => call<MemoryGraph>('GET', `/v1/graph?${scoped(scope)}&limit=300${root ? `&root=${token(root)}` : ''}`, undefined, signal),
+    learning: (scope: string, signal?: AbortSignal) => call<{items: LearningDecision[]}>('GET', `/v1/learning?${scoped(scope)}`, undefined, signal).then(r => r.items),
     keys: (scope: string, signal?: AbortSignal) => call<{items: Key[]}>('GET', `/v1/keys?${scoped(scope)}`, undefined, signal).then(r => r.items),
     procedure: (id: string, signal?: AbortSignal) => call<ProcedureDetail>('GET', `/v1/procedures/${token(id)}`, undefined, signal),
     run: (id: string, signal?: AbortSignal) => call<RunDetail>('GET', `/v1/runs/${token(id)}`, undefined, signal),
@@ -107,7 +115,7 @@ export function createClient(key: string) {
     deleteRun: (id: string) => call<{deleted: boolean}>('DELETE', `/v1/runs/${token(id)}`),
     nameSkill: (id: string, agent: SkillAgent) => call<{name: string}>('POST', `/v1/procedures/${token(id)}/name?agent=${agent}`),
     preferences: (signal?: AbortSignal) => call<Preferences>('GET', '/v1/preferences', undefined, signal),
-    setPreferences: (skill_titles: Preferences['skill_titles']) => call<Preferences>('PUT', '/v1/preferences', {skill_titles}),
+    setPreferences: (skill_titles: Preferences['skill_titles'], skill_learning?: Preferences['skill_learning']) => call<Preferences>('PUT', '/v1/preferences', {skill_titles, skill_learning}),
     exportSkill: (id: string, agent: SkillAgent) => call<ExportResult>('POST', `/v1/procedures/${token(id)}/export?agent=${agent}`),
     revokeKey: (id: string, scope: string) => call<unknown>('DELETE', `/v1/keys/${token(id)}?${scoped(scope)}`),
   };
