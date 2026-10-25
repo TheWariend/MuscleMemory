@@ -1,0 +1,27 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "musclememory",
+  "version": "0.1.8",
+  "description": "Procedural memory for coding agents, with proof before reuse.",
+  "author": {
+    "name": "TheWariend",
+    "url": "https://thewariend.com"
+  },
+  "homepage": "https://thewariend.com/musclememory",
+  "license": "Apache-2.0",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "MuscleMemory",
+    "shortDescription": "Procedural memory with proof before reuse.",
+    "developerName": "TheWariend",
+    "category": "Productivity",
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "websiteURL": "https://thewariend.com/musclememory",
+    "composerIcon": "./assets/icon-transparent-white.png",
+    "logo": "./assets/icon.png",
+    "logoDark": "./assets/icon-dark.png"
+  }
+}

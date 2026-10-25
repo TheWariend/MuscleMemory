@@ -84,3 +84,32 @@ Automatic hook lookup does not create an MCP tool call in the Codex conversation
 Its outcome appears in Activity without adding no-match messages to the agent's
 prompt. Explicit MCP calls are still chosen by Codex. Large MCP inspections return
 a bounded summary with a link to the full authenticated REST record.
+
+### Local plugin branding
+
+For MuscleMemory's logo on Codex tool rows, package the existing file-authenticated
+stdio connection as a local plugin. Run these from the source checkout after the
+`musclememory` MCP entry has been configured as above:
+
+```sh
+python scripts/package_codex_plugin.py --output ~/.musclememory/codex-marketplace
+codex plugin marketplace add ~/.musclememory/codex-marketplace
+codex plugin add musclememory@musclememory-local
+```
+
+The package reuses the existing command and key-file arguments through a contained
+launcher. It includes the existing light/dark logo assets and copies no inline
+credentials. Both logos have transparent backgrounds. Tool rows explicitly use
+the white transparent composer icon, which remains visible in the dark desktop
+UI. Its filename differs from the original black icon to avoid reusing the cached
+image. Portable plugin connections use Codex's timeout defaults. The
+packager creates a new private directory and refuses to overwrite an existing one.
+
+After installing the plugin, replace the standalone entry with
+`codex mcp remove musclememory`; otherwise the standalone definition takes
+precedence and has no plugin identity or logo. Restart Codex to reload the
+connection. Verify the branding on a new tool call; earlier rows may retain the
+generic icon. Capture hooks remain configured separately. The plugin adds
+no hooks, changes no learning preferences, and grants no approval or validation
+credit. To refresh an installed local package, update its source files and run
+`codex plugin add musclememory@musclememory-local` again.
