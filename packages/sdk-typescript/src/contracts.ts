@@ -77,6 +77,15 @@ export type Measurements = {
   "cost_usd"?: number | null;
 };
 
+export type MemoryLookupInput = {
+  "lookup_token": string;
+  "status": "delivered" | "no_match" | "blocked" | "error" | "disabled";
+  "reason": string;
+  "procedure_token"?: string | null;
+  "procedure_version"?: number | null;
+  "context_tokens"?: number;
+};
+
 export type ObserveInput = {
   "run_token": string;
   "event_batch": Array<Record<string, unknown>>;

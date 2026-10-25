@@ -27,6 +27,10 @@ Give Codex a task, then:
 
 - `musclememory status` lists Codex under connected agents.
 - The dashboard's **Activity** page shows the session.
+- Activity also shows the automatic memory lookup: a skill sent to the agent,
+  no eligible skill, or a reason guidance was withheld. Open the session for
+  the skill link and its proof status. Sending context does not prove Codex
+  applied it. Older sessions without a report say so explicitly.
 - After a session where tests pass after the last change, **Skills** shows a new
   skill marked **Needs your OK**.
 
@@ -75,3 +79,7 @@ For explicit memory tools, add the entry from [config.example.toml](config.examp
 with a key from `musclememory key --label codex-mcp`. MCP alone does not capture
 Codex's own tools; the hooks do that. The live smoke test runs only on request:
 `MM_TEST_CODEX=1 .venv/bin/python -m pytest -q tests/test_native_codex.py`.
+
+Automatic hook lookup does not create an MCP tool call in the Codex conversation.
+Its outcome appears in Activity without adding no-match messages to the agent's
+prompt. Explicit MCP calls are still chosen by Codex.

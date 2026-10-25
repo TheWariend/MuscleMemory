@@ -110,6 +110,10 @@ def test_hook_skips_missing_changed_or_huge_files_and_records_reason(hook, code,
     assert not queue.db.execute("SELECT * FROM injections").fetchall()
     [skip] = queue.db.execute("SELECT * FROM skips").fetchall()
     assert skip["reason"] == reason
+    report = json.loads(queue.db.execute("SELECT payload FROM memory_lookups").fetchone()[0])
+    assert report["status"] == "blocked" and report["reason"] == reason
+    assert report["context_tokens"] == 0
+    assert "old code" not in json.dumps(report)
     stored = json.dumps(dict(skip))
     assert "replacement code" not in stored and "old code" not in stored
 

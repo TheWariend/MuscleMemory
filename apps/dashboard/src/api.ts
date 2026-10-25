@@ -9,7 +9,14 @@ export type ProcedureSummary = {
   /** A title from Claude Code or Codex, else a name built from the files it changed and its test. */
   name?: string;
 };
-export type RunSummary = {run_token: string; intent_text: string; status: string; agent_name?: string | null; created_at?: string};
+export type MemoryLookup = {
+  lookup_token: string; status: 'delivered' | 'no_match' | 'blocked' | 'error' | 'disabled';
+  reason: string; procedure_token?: string | null; procedure_version?: number | null;
+  context_tokens: number; created_at: string; skill_name?: string;
+  proof?: {successes: number; failures: number; reviewed: boolean; validation_status: string};
+  workspace_readiness?: {needs_review: number; needs_checks: number; required_checks: number};
+};
+export type RunSummary = {run_token: string; intent_text: string; status: string; agent_name?: string | null; created_at?: string; memory_lookup?: MemoryLookup | null};
 export type RunPage = {items: RunSummary[]; total: number; has_more: boolean; status_counts: Record<string, number>};
 export type Usage = {
   operations: Array<{operation: string; requests: number; units: number}>;
@@ -60,6 +67,7 @@ export type RunEvent = {
 };
 export type RunDetail = {
   run_token: string; intent_text: string; status: string; events: RunEvent[];
+  memory_lookups?: MemoryLookup[];
   capture_reason?: string | null;
   capture_gaps?: string[] | null;
   runtime_profile: {agent_name: string; bindings: Record<string, string>; environment: Record<string, string>; permissions: string[]};

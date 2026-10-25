@@ -10,6 +10,7 @@ from .core import (
     EvaluateInput,
     InspectInput,
     LearnInput,
+    MemoryLookupInput,
     ObserveInput,
     RecallInput,
     SessionUsageInput,
@@ -97,3 +98,6 @@ class MuscleMemoryClient:
 
     def record_session_usage(self, run_token, **arguments):
         return self._post(f"/v1/runs/{run_token}/usage", SessionUsageInput(**arguments))
+
+    def record_memory_lookup(self, run_token, **arguments):
+        return self._post(f"/v1/runs/{run_token}/memory", MemoryLookupInput(**arguments))

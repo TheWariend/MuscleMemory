@@ -238,6 +238,9 @@ class HookQueue:
                 identity TEXT NOT NULL, run TEXT NOT NULL, procedure TEXT NOT NULL,
                 version INTEGER NOT NULL, reason TEXT NOT NULL, created REAL NOT NULL,
                 PRIMARY KEY(identity,run,procedure,version));
+            CREATE TABLE IF NOT EXISTS memory_lookups (
+                lookup TEXT PRIMARY KEY, identity TEXT NOT NULL, run TEXT NOT NULL,
+                payload TEXT NOT NULL, ack INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS reconciliations (
                 identity TEXT NOT NULL, run TEXT NOT NULL, derived TEXT NOT NULL,
                 fingerprint TEXT NOT NULL, events TEXT NOT NULL,
@@ -1231,7 +1234,10 @@ class HookQueue:
             run = self.db.execute(
                 "SELECT * FROM runs WHERE token=? AND identity=?", (token, self.identity)
             ).fetchone()
-            if not run or set(json.loads(run["gaps"])) - {"unverified_exit_status"}:
+            if not run:
+                return ""
+            if set(json.loads(run["gaps"])) - {"unverified_exit_status"}:
+                self.record_lookup(token, "blocked", "capture_incomplete")
                 return ""
             if (
                 self.db.execute(
@@ -1240,15 +1246,21 @@ class HookQueue:
                 ).fetchone()[0]
                 >= 2
             ):
+                self.record_lookup(token, "blocked", "session_limit")
                 return ""
-            result = client.musclememory_recall(
-                observation_run=token,
-                intent_text=intent[:8000],
-                runtime_profile=profile,
-                visibility_scope=scope,
-                match_limit=1,
-            )
+            try:
+                result = client.musclememory_recall(
+                    observation_run=token,
+                    intent_text=intent[:8000],
+                    runtime_profile=profile,
+                    visibility_scope=scope,
+                    match_limit=1,
+                )
+            except Exception:
+                self.record_lookup(token, "error", "lookup_failed")
+                return ""
             if not result.get("candidates"):
+                self.record_lookup(token, "no_match", "no_eligible_skill")
                 return ""
             candidate = result["candidates"][0]
             if self.db.execute(
@@ -1261,6 +1273,7 @@ class HookQueue:
                     candidate["procedure_version"],
                 ),
             ).fetchone():
+                self.record_lookup(token, "blocked", "already_delivered", candidate)
                 return ""
             reason, changed = check_files(candidate["definition"], cwd)
             # Hooks deliver only the candidate checked here, not an unchecked plan.
@@ -1271,10 +1284,12 @@ class HookQueue:
                 )
             if reason:
                 self.record_skip(run, candidate, reason)
+                self.record_lookup(token, "blocked", reason, candidate)
                 return ""
             context = render_pointer(result, budget)
             if not context:
                 self.record_skip(run, candidate, "pointer_budget")
+                self.record_lookup(token, "blocked", "pointer_budget", candidate)
                 return ""
             self.db.execute(
                 "INSERT INTO injections VALUES (?,?,?,?,?,?)",
@@ -1287,7 +1302,55 @@ class HookQueue:
                     token_count(context),
                 ),
             )
+            self.record_lookup(token, "delivered", "delivered", candidate, token_count(context))
             return context
+
+    def record_lookup(self, token, status, reason, candidate=None, tokens=0):
+        payload = {
+            "lookup_token": str(uuid4()),
+            "status": status,
+            "reason": reason,
+            "context_tokens": tokens,
+        }
+        if candidate:
+            payload.update(
+                procedure_token=candidate["procedure_token"],
+                procedure_version=candidate["procedure_version"],
+            )
+        self.db.execute(
+            "INSERT INTO memory_lookups (lookup,identity,run,payload) VALUES (?,?,?,?)",
+            (payload["lookup_token"], self.identity, token, json.dumps(payload)),
+        )
+
+    def flush_lookups(self, client):
+        """Retry reports without changing captures, injecting text, or granting proof."""
+        delivered = 0
+        for row in self.db.execute(
+            "SELECT lookup,run,payload FROM memory_lookups WHERE identity=? AND ack=0 "
+            "ORDER BY rowid LIMIT 20",
+            (self.identity,),
+        ).fetchall():
+            try:
+                client.record_memory_lookup(row["run"], **json.loads(row["payload"]))
+            except httpx.HTTPStatusError as error:
+                try:
+                    code = error.response.json().get("error", {}).get("code")
+                except ValueError:
+                    code = None
+                if error.response.status_code in {404, 410} and code in {
+                    "not_found",
+                    "expired_trace",
+                }:
+                    # A deleted/expired record cannot accept a report; it must not
+                    # hold newer reports behind it. A missing endpoint stays queued.
+                    self.db.execute(
+                        "UPDATE memory_lookups SET ack=2 WHERE lookup=?", (row["lookup"],)
+                    )
+                    continue
+                raise
+            self.db.execute("UPDATE memory_lookups SET ack=1 WHERE lookup=?", (row["lookup"],))
+            delivered += 1
+        return delivered
 
     def record_skip(self, run, candidate, reason):
         self.db.execute(
@@ -1588,6 +1651,8 @@ def run_hook(config_path, client_name, payload):
                     file=sys.stderr,
                 )
         recall_enabled = config.get("recall_enabled", True)
+        if stage == "prompt" and token and not recall_enabled:
+            queue.record_lookup(token, "disabled", "recall_disabled")
         if stage == "prompt" and client_name != "cursor" and recall_enabled:
             try:
                 context = queue.recall_once(
@@ -1636,6 +1701,10 @@ def run_hook(config_path, client_name, payload):
                     pass
         return output
     finally:
+        try:
+            queue.flush_lookups(client)
+        except Exception:
+            pass  # The report stays queued; recording and agent work continue normally.
         queue.close()
         client.close()
 
@@ -1731,7 +1800,8 @@ def hooks_command(arguments):
             for token in queue.pending():
                 while count := queue.deliver(client, token):
                     delivered += count
-            print(json.dumps({"delivered_events": delivered}))
+            reports = queue.flush_lookups(client)
+            print(json.dumps({"delivered_events": delivered, "delivered_memory_reports": reports}))
         elif arguments.action == "repair":
             repaired = queue.repair_endings()
             delivered = 0

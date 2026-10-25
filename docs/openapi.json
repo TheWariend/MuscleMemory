@@ -1400,6 +1400,61 @@
         }
       }
     },
+    "/v1/runs/{run_token}/memory": {
+      "post": {
+        "summary": "Record Memory Lookup",
+        "operationId": "record_memory_lookup_v1_runs__run_token__memory_post",
+        "security": [
+          {
+            "Scoped API key": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "run_token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[a-zA-Z0-9_.:-]+$",
+              "title": "Run Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemoryLookupInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/usage/sessions": {
       "get": {
         "summary": "Session Usage",
@@ -1890,6 +1945,77 @@
           "duration_ms"
         ],
         "title": "Measurements"
+      },
+      "MemoryLookupInput": {
+        "properties": {
+          "lookup_token": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_.:-]+$",
+            "title": "Lookup Token"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "delivered",
+              "no_match",
+              "blocked",
+              "error",
+              "disabled"
+            ],
+            "title": "Status"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9_.:-]+$",
+            "title": "Reason"
+          },
+          "procedure_token": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 128,
+                "minLength": 1,
+                "pattern": "^[a-zA-Z0-9_.:-]+$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedure Token"
+          },
+          "procedure_version": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedure Version"
+          },
+          "context_tokens": {
+            "type": "integer",
+            "maximum": 64000.0,
+            "minimum": 0.0,
+            "title": "Context Tokens",
+            "default": 0
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "lookup_token",
+          "status",
+          "reason"
+        ],
+        "title": "MemoryLookupInput",
+        "description": "A hook's delivery report, never application or validation evidence."
       },
       "ObserveInput": {
         "properties": {

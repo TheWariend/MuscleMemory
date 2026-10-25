@@ -111,6 +111,24 @@ inferred when missing. Evaluations require the applied `procedure_version`.
 
 ## Other REST operations
 
+`POST /v1/runs/{run}/memory` records a hook's memory-delivery report with namespace
+write access. Its lookup token is idempotent; conflicting retries are rejected.
+Status is `delivered`, `no_match`, `blocked`, `error`, or `disabled`. Reports carry
+reason codes, an optional skill/version, and delivered context token count, never
+file contents or tool arguments. Run details include the latest 20 reports;
+session listings include the latest one. Skill proof and workspace readiness are
+snapshots taken by the server at report time. Readiness counts describe the
+workspace, not whether those candidates match the task. Reports are client-reported
+delivery observations and never count as validation, approval, or application
+evidence. They are deleted with their run. Hooks queue reports during outages and
+retry them; missing or expired runs cannot block newer reports.
+
+MCP inspection applies the existing proof filter before responding. When full
+detail exceeds its 4,000-token budget, it returns a compact summary and the
+authenticated REST detail path. Whole optional fields or methods are omitted
+with an explicit truncation marker; instructions are never cut mid-sentence to
+fit. Full human-review records over REST are unchanged.
+
 `POST /v1/runs` creates an execution record; MCP observe can create one from a
 sequence-zero intent. `POST /v1/runs/{run}/auto-learn` turns a session whose tests
 passed into a check for a matching skill, or a new skill that waits for approval;

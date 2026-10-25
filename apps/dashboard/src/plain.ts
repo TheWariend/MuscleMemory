@@ -1,6 +1,31 @@
 // Plain-language labels and descriptions shared by every page.
+import type {MemoryLookup} from './api';
 
 export type Tone = 'good' | 'warn' | 'bad' | 'info' | 'neutral';
+
+export function memoryLookupStatus(lookup: MemoryLookup): {label: string; tone: Tone; explain: string} {
+  if (lookup.status === 'delivered') return {label: 'Skill sent to agent', tone: 'good', explain: 'Added to the agent’s context. This does not prove the agent applied it.'};
+  if (lookup.status === 'no_match') return {label: 'No eligible skill', tone: 'neutral', explain: 'No relevant skill met the proof, approval, freshness and compatibility requirements.'};
+  if (lookup.status === 'error') return {label: 'Memory lookup failed', tone: 'warn', explain: 'Memory could not be checked. The agent continued without added guidance.'};
+  if (lookup.status === 'disabled') return {label: 'Memory lookup off', tone: 'neutral', explain: 'Automatic recall was turned off for this session.'};
+  const reasons: Record<string, string> = {
+    already_delivered: 'This skill was already sent earlier in the session.',
+    session_limit: 'The session already received its maximum number of memory notes.',
+    capture_incomplete: 'The capture is incomplete, so no memory note was added.',
+    pointer_budget: 'The guidance could not fit without dropping essential information.',
+    missing_changed_file: 'A file the skill depends on is missing from this checkout.',
+    edited_code_missing: 'The stored edits no longer match the current files.',
+    missing_project_root: 'The current project could not be identified for the file check.',
+    too_many_files: 'The skill exceeds the local file-check limit.',
+    file_too_large: 'A file exceeds the local file-check size limit.',
+    unsafe_path: 'A stored path could not be safely checked inside this project.',
+    unsafe_file: 'A stored path is not a regular file.',
+    unreadable_file: 'A required file could not be read as text.',
+    unsafe_or_unreadable_file: 'A required file could not be safely read.',
+    file_check_error: 'The current-file check could not be completed.',
+  };
+  return {label: lookup.reason === 'already_delivered' ? 'Skill already sent' : 'Memory withheld', tone: 'neutral', explain: reasons[lookup.reason] ?? 'Memory was withheld because a delivery requirement was not met.'};
+}
 
 export function skillStatus(status: string, successes = 0, needsReview = false): {label: string; tone: Tone; explain: string} {
   if (status === 'flagged') return {label: 'Paused', tone: 'bad', explain: 'Paused for evidence or quality review. Agents will not receive it.'};

@@ -21,6 +21,7 @@ from .core import (
     EvaluateInput,
     InspectInput,
     LearnInput,
+    MemoryLookupInput,
     ObserveInput,
     PreferencesInput,
     ProcedureDefinition,
@@ -376,6 +377,10 @@ def create_app(service=None):
     @app.post("/v1/runs/{run_token}/usage")
     def record_session_usage(run_token: Token, body: SessionUsageInput, actor=auth):
         return service.record_session_usage(actor, run_token, body)
+
+    @app.post("/v1/runs/{run_token}/memory")
+    def record_memory_lookup(run_token: Token, body: MemoryLookupInput, actor=auth):
+        return service.record_memory_lookup(actor, run_token, body)
 
     @app.get("/v1/usage/sessions")
     def session_usage(

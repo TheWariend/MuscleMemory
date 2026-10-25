@@ -247,6 +247,22 @@ class ArtifactPosting(Base):
     )
 
 
+class MemoryLookup(Base):
+    __tablename__ = "memory_lookups"
+    tenant: Mapped[str] = mapped_column(String(128), primary_key=True)
+    run_token: Mapped[str] = mapped_column(String(128), primary_key=True)
+    lookup_token: Mapped[str] = mapped_column(String(128), primary_key=True)
+    namespace: Mapped[str] = mapped_column(String(128))
+    payload: Mapped[dict] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant", "run_token"], ["runs.tenant", "runs.run_token"], ondelete="CASCADE"
+        ),
+        Index("ix_memory_lookup_run", "tenant", "run_token", "created_at"),
+    )
+
+
 class SessionUsage(Base):
     __tablename__ = "session_usage"
     tenant: Mapped[str] = mapped_column(String(128), primary_key=True)

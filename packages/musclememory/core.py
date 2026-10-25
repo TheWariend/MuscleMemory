@@ -140,6 +140,27 @@ class InspectInput(Contract):
     revision_selector: Literal["latest"] | Annotated[int, Field(ge=1)] = "latest"
 
 
+class MemoryLookupInput(Contract):
+    """A hook's delivery report, never application or validation evidence."""
+
+    lookup_token: Token
+    status: Literal["delivered", "no_match", "blocked", "error", "disabled"]
+    reason: Token
+    procedure_token: Token | None = None
+    procedure_version: int | None = Field(default=None, ge=1)
+    context_tokens: int = Field(default=0, ge=0, le=64000)
+
+    @model_validator(mode="after")
+    def validate_delivery(self):
+        if (self.procedure_token is None) != (self.procedure_version is None):
+            raise ValueError("Procedure and version must be provided together")
+        if self.status == "delivered" and self.procedure_token is None:
+            raise ValueError("Delivery requires a procedure and version")
+        if self.status != "delivered" and self.context_tokens:
+            raise ValueError("Only delivered context has tokens")
+        return self
+
+
 class PreferencesInput(Contract):
     # Which agent names new skills for the dashboard: "off", "claude" or "codex".
     skill_titles: Literal["off", "claude", "codex"]

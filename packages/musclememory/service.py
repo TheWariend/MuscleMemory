@@ -1627,6 +1627,9 @@ class MemoryService:
                 .offset(offset)
                 .limit(limit)
             ).all()
+            from .memory_lookup import lookup_history
+
+            lookups = lookup_history(session, principal.tenant, [r.run_token for r in rows])
             return {
                 "items": [
                     {
@@ -1635,6 +1638,7 @@ class MemoryService:
                         "status": r.status,
                         "agent_name": (r.runtime or {}).get("agent_name"),
                         "created_at": r.created_at.isoformat() + "Z",
+                        "memory_lookup": next(iter(lookups[r.run_token]), None),
                     }
                     for r in rows
                 ],
@@ -1652,17 +1656,25 @@ class MemoryService:
             response = events[-1].response if events and events[-1].kind == "completion" else None
             reason = response.get("reason") if isinstance(response, dict) else None
             gaps = response.get("capture_gaps") if isinstance(response, dict) else None
+            from .memory_lookup import lookup_history
+
             return {
                 "run_token": run.run_token,
                 "intent_text": run.intent,
                 "status": run.status,
                 "runtime_profile": run.runtime,
                 "events": [e.model_dump(mode="json") for e in events],
+                "memory_lookups": lookup_history(session, principal.tenant, [token])[token],
                 "capture_reason": reason if isinstance(reason, str) else None,
                 "capture_gaps": gaps
                 if isinstance(gaps, list) and all(isinstance(gap, str) for gap in gaps)
                 else None,
             }
+
+    def record_memory_lookup(self, principal, token, request):
+        from .memory_lookup import record_lookup
+
+        return record_lookup(self, principal, token, request)
 
     def delete_memory(self, principal, token, kind="procedure"):
         with self.db.transaction() as session:

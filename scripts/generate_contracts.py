@@ -10,6 +10,7 @@ from musclememory.core import (
     ExecutionEvent,
     InspectInput,
     LearnInput,
+    MemoryLookupInput,
     ObserveInput,
     ProcedureDefinition,
     RecallInput,
@@ -27,6 +28,7 @@ MODELS = [
     ExecutionEvent,
     ProcedureDefinition,
     SessionUsageInput,
+    MemoryLookupInput,
 ]
 
 

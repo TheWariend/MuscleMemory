@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
-import type {RunDetail, RunEvent, RunSummary, RunPage} from '../api';
+import type {MemoryLookup, RunDetail, RunEvent, RunSummary, RunPage} from '../api';
 import {ProviderLogo, providerOf} from '../logos';
-import {agentName, describeStep, sessionIssues, sessionStatus} from '../plain';
+import {agentName, describeStep, memoryLookupStatus, sessionIssues, sessionStatus} from '../plain';
 import {Badge, CodeBlock, Empty, formatDuration, Icon, relativeTime, SearchField, Segmented, Sheet, Skeleton, useFeedback} from '../ui';
 import {useWorkspace} from '../workspace';
 
@@ -55,6 +55,7 @@ export function SessionRow({r, compact}: {r: RunSummary; compact?: boolean}) {
     <span className="row-main">
       <span className="row-title">{r.intent_text}</span>
       <span className="row-meta"><span>{agentName(r.agent_name)}</span>{r.created_at && <span>{relativeTime(r.created_at)}</span>}</span>
+      {r.memory_lookup && <span className="row-meta"><Icon name="recall" size={12}/>{memoryLookupStatus(r.memory_lookup).label}{r.memory_lookup.skill_name && <> · {r.memory_lookup.skill_name}</>}</span>}
     </span>
     {!compact && <Badge label={status.label} tone={status.tone}/>}
     <Icon name="chevron" size={14}/>
@@ -106,6 +107,11 @@ function SessionSheet({token, onClose}: {token?: string; onClose: () => void}) {
       {error && <div role="alert" className="banner tone-bad"><Icon name="alert"/><span>{error}</span></div>}
       {!detail && !error && <Skeleton rows={5}/>}
       {detail && <div className="stack-sm">
+        <section className="sub">
+          <h3>Memory lookup</h3>
+          {!detail.memory_lookups?.length ? <p className="muted">No lookup report was recorded for this session.</p>
+            : detail.memory_lookups.map(lookup => <MemoryLookupResult key={lookup.lookup_token} lookup={lookup}/>)}
+        </section>
         {issues.length > 0 && <section className="sub">
           <h3>Why no skill was learned</h3>
           <ul className="bullets">{issues.map(issue => <li key={issue}>{issue}</li>)}</ul>
@@ -120,6 +126,18 @@ function SessionSheet({token, onClose}: {token?: string; onClose: () => void}) {
     </div>
     {detail && can('delete') && <div className="sheet-foot"><button type="button" className="danger-ghost" onClick={() => void remove()}><Icon name="trash" size={14}/>Delete session</button></div>}
   </Sheet>;
+}
+
+function MemoryLookupResult({lookup}: {lookup: MemoryLookup}) {
+  const status = memoryLookupStatus(lookup);
+  const readiness = lookup.workspace_readiness;
+  return <div className="stack-sm">
+    <p className="sheet-meta"><Badge label={status.label} tone={status.tone}/><span>{relativeTime(lookup.created_at)}</span></p>
+    {lookup.procedure_token && <a href={`#/skills/${encodeURIComponent(lookup.procedure_token)}`}>{lookup.skill_name || 'Open skill'} · version {lookup.procedure_version}</a>}
+    <p className="muted">{status.explain}</p>
+    {lookup.proof && <p className="muted">Proof at report time: {lookup.proof.successes} passing checks · {lookup.proof.failures} failures · {lookup.proof.reviewed ? 'Kept by you' : 'Needs your OK'} · {lookup.proof.validation_status === 'validated' ? 'Validated' : 'Not validated'}</p>}
+    {readiness && lookup.status === 'no_match' && <p className="muted">In this workspace: {readiness.needs_review} skills need your OK; {readiness.needs_checks} need more passing checks ({readiness.required_checks} required). These counts are separate from relevance to this task.</p>}
+  </div>;
 }
 
 function Step({e, index}: {e: RunEvent; index: number}) {
