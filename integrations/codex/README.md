@@ -82,4 +82,5 @@ Codex's own tools; the hooks do that. The live smoke test runs only on request:
 
 Automatic hook lookup does not create an MCP tool call in the Codex conversation.
 Its outcome appears in Activity without adding no-match messages to the agent's
-prompt. Explicit MCP calls are still chosen by Codex.
+prompt. Explicit MCP calls are still chosen by Codex. Large MCP inspections return
+a bounded summary with a link to the full authenticated REST record.

@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 
@@ -7,6 +8,8 @@ from conftest import PROFILE
 from mcp import Client
 from mcp.client.stdio import StdioServerParameters
 from mcp.client.streamable_http import streamable_http_client
+from musclememory.core import LearnInput
+from musclememory.delivery import token_count
 from musclememory.mcp_server import build_mcp
 
 NAMES = {
@@ -118,6 +121,33 @@ def approver(service, principal):
 async def test_official_client_in_process(service, credential, principal):
     async with Client(build_mcp(service, stdio_key=credential["api_key"]), mode="legacy") as client:
         await protocol_workflow(client, approver(service, principal))
+
+
+async def test_large_inspection_returns_bounded_summary(service, principal, credential):
+    from conftest import trace
+
+    marker = "RAW_DIAGNOSTIC_TRACE_" * 3000
+    trace(service, principal, arguments={"path": "package.json", "diagnostic": marker})
+    skill = service.learn(
+        principal,
+        LearnInput(
+            run_token="training",
+            completion_proof={
+                "succeeded": True,
+                "evidence_event_ids": ["read"],
+                "summary": "Manifest checked",
+            },
+        ),
+    )["procedure_token"]
+    async with Client(build_mcp(service, stdio_key=credential["api_key"]), mode="legacy") as client:
+        response = await client.call_tool("musclememory_inspect", {"procedure_token": skill})
+        assert not response.is_error
+        result = response.structured_content
+        assert result["detail_truncated"] and result["needs_review"]
+        assert result["successes"] == 0 and result["procedure_token"] == skill
+        assert "RAW_DIAGNOSTIC_TRACE_" not in json.dumps(result)
+        assert token_count(json.dumps(result)) <= 4000
+        assert result["detail_path"].endswith("revision_selector=1")
 
 
 async def test_stdio_real_subprocess(service, credential, principal):

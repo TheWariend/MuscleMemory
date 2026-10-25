@@ -28,6 +28,62 @@ from .core import (
 from .delivery import token_count
 
 
+def compact_inspection(result, budget=4000):
+    """Keep inspection usable for large traces without releasing raw arguments."""
+    from .delivery import NOTICE
+
+    compact = {
+        key: result[key]
+        for key in (
+            "procedure_token",
+            "procedure_version",
+            "visibility_scope",
+            "lifecycle_status",
+            "needs_review",
+            "successes",
+            "failures",
+            "confidence",
+            "stale",
+            "source_run",
+            "method",
+            "method_withheld",
+            "requirements",
+        )
+        if key in result
+    }
+    compact.update(
+        notice=NOTICE,
+        detail_truncated=True,
+        source_detail="Full human-review record is available through the scoped REST API",
+        detail_path=(
+            f"/v1/procedures/{result['procedure_token']}"
+            f"?revision_selector={result['procedure_version']}"
+        ),
+        version_history=result.get("version_history", [])[:5],
+    )
+    summary = result.get("summary")
+    if summary:
+        compact["summary"] = {
+            "changes": summary.get("changes", [])[:6],
+            "reads": summary.get("reads", [])[:6],
+            "edits": summary.get("edits", [])[:4],
+            "test": summary.get("test"),
+        }
+    for field in ("edits", "test", "reads", "changes"):
+        if token_count(json.dumps(compact)) <= budget:
+            break
+        compact.get("summary", {}).pop(field, None)
+    if token_count(json.dumps(compact)) > budget and compact.get("method"):
+        # A whole method is omitted, never sliced into a misleading instruction.
+        compact.update(method=None, method_withheld=True, method_withheld_reason="response_budget")
+    if token_count(json.dumps(compact)) > budget:
+        # Oversized scope data cannot be detached from advice. Return metadata only.
+        for field in ("requirements", "summary", "version_history"):
+            compact.pop(field, None)
+        compact.update(method=None, method_withheld=True, method_withheld_reason="response_budget")
+    return compact
+
+
 def build_mcp(service, stdio_key=None):
     server = MCPServer(
         "MuscleMemory",
@@ -92,12 +148,7 @@ def build_mcp(service, stdio_key=None):
                 if summary.get("request"):
                     summary["request"] = first_sentence(summary["request"])
                 if token_count(json.dumps(result)) > 4000:
-                    raise DomainError(
-                        "inspection_budget",
-                        "Full procedure exceeds the agent detail budget; "
-                        "inspect it through the scoped REST API",
-                        413,
-                    )
+                    result = compact_inspection(result)
             if method == "recall":
                 # Native tool results also use a compact pointer. Full internal
                 # source/arguments are deliberately available only via inspect.
